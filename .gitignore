@@ -1,0 +1,10 @@
+# Ignora le cartelle di build del compilatore C#
+bin/
+obj/
+
+# Ignora i file di configurazione (Protezione Token Telegram e Dati Sensibili)
+*.json
+
+# Ignora i file di backup locali di Emanuele
+*.bak
+*.old

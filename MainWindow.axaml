@@ -1,0 +1,232 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:core="using:OperaSuprema.Core"
+        x:Class="OperaSuprema.GUI.MainWindow"
+        Title="Opera Suprema - Local Enterprise AI IDE v8.0"
+        Width="1600" Height="900"
+        Background="#18181A" Foreground="#F5F5F5"
+        FontFamily="Inter, Roboto, Ubuntu, Noto Sans, sans-serif, Noto Color Emoji, Segoe UI Emoji">
+
+    <Grid RowDefinitions="Auto, *">
+        
+        <Menu Grid.Row="0" Background="#252526" Foreground="#E0E0E0" Padding="5,2">
+            <MenuItem Header="_File">
+                <MenuItem Name="MenuSettings" Header="⚙️ Impostazioni Infrastruttura (JSON)..." />
+                <Separator Background="#3F3F46" Height="1"/>
+                <MenuItem Name="MenuExit" Header="❌ Esci da Opera Suprema" Foreground="Tomato"/>
+            </MenuItem>
+        </Menu>
+
+        <SplitView Grid.Row="1" x:Name="ChatSplitView" DisplayMode="Inline" OpenPaneLength="280" IsPaneOpen="False" PaneBackground="#1E1E1E">
+            
+            <SplitView.Pane>
+                <Grid RowDefinitions="Auto, Auto, Auto, *">
+                    
+                    <Button x:Name="NewChatButton" Content="➕ Nuova Chat" Grid.Row="0" Margin="10" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="#007ACC" Foreground="White" Cursor="Hand" FontWeight="Bold" Padding="10"/>
+                    
+                    <Border Grid.Row="1" Background="#252526" CornerRadius="8" Padding="10" Margin="10,0,10,10" BorderBrush="#3F3F46" BorderThickness="1">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="🎭 MATRICE COMPORTAMENTALE" FontSize="11" FontWeight="Bold" Foreground="#A0A0A0" Margin="0,0,0,5"/>
+                            <CheckBox Name="ChkPersonaIngegnere" Content="Senior Architect (Codice/Tech)" Foreground="White" FontSize="12" IsChecked="True" IsCheckedChanged="OnPersonaChanged"/>
+                            <CheckBox Name="ChkPersonaAvvocato" Content="Avvocato (Legale/Burocrate)" Foreground="White" FontSize="12" IsCheckedChanged="OnPersonaChanged"/>
+                            <CheckBox Name="ChkPersonaCybersec" Content="Cybersecurity (Security/Ethical)" Foreground="White" FontSize="12" IsCheckedChanged="OnPersonaChanged"/>
+                        </StackPanel>
+                    </Border>
+
+                    <Button Name="SwapInfrastructureButton" Grid.Row="2" Content="🔄 Cambia Infrastruttura" Background="#D32F2F" Foreground="White" CornerRadius="5" Padding="10" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" FontWeight="Bold" Margin="10,0,10,10" Cursor="Hand"/>
+
+                    <ListBox x:Name="ChatHistoryListBox" Grid.Row="3" Background="Transparent" SelectionMode="Single" Margin="5">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate x:DataType="core:ChatSession">
+                                <Grid ColumnDefinitions="*, Auto" Margin="0,5">
+                                    <TextBlock Text="{Binding Title}" VerticalAlignment="Center" Grid.Column="0" TextTrimming="CharacterEllipsis" FontSize="13" Foreground="LightGray" Margin="5,0"/>
+                                    
+                                    <Button Content="⋮" Grid.Column="1" Background="Transparent" Foreground="Gray" Cursor="Hand" Padding="5,0">
+                                        <Button.Flyout>
+                                            <MenuFlyout>
+                                                <MenuItem Header="📌 Fissa/Rimuovi" Click="OnTogglePinChatClicked" />
+                                                <MenuItem Header="✏️ Rinomina" Click="OnRenameChatClicked" />
+                                                <MenuItem Header="🗑️ Elimina" Foreground="Tomato" Click="OnDeleteChatClicked" />
+                                            </MenuFlyout>
+                                        </Button.Flyout>
+                                    </Button>
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                    
+                </Grid>
+            </SplitView.Pane>
+
+            <SplitView.Content>
+                <Grid ColumnDefinitions="320, *, 450">
+                    
+                    <Border Grid.Column="0" Background="#1E1E1E" BorderBrush="#3F3F46" BorderThickness="0,0,1,0">
+                        <Grid RowDefinitions="Auto, *, Auto, Auto">
+                            <StackPanel Grid.Row="0" Margin="15">
+                                
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <Button x:Name="ToggleSidebarButton" Content="☰" FontSize="20" Background="Transparent" Foreground="#A0A0A0" VerticalAlignment="Center" Padding="5" Cursor="Hand"/>
+                                    <TextBlock Text="NEXUS EXPLORER" FontWeight="Black" FontSize="14" Foreground="#007ACC" LetterSpacing="1" VerticalAlignment="Center"/>
+                                </StackPanel>
+                                
+                                <ComboBox Name="ProjectSelector" HorizontalAlignment="Stretch" Margin="0,15,0,0" PlaceholderText="Nessun progetto in RAM" Background="#2D2D30"/>
+                            </StackPanel>
+                            
+                            <TreeView Grid.Row="1" Name="ProjectTreeView" Margin="10" Background="Transparent"/>
+                            
+                            <Border Grid.Row="2" Name="DragDropArea" Height="150" Margin="10,0,10,10" 
+                                    Background="#2D2D30" BorderBrush="#007ACC" BorderThickness="1" CornerRadius="8" DragDrop.AllowDrop="True">
+                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
+                                    <Button Name="BrowseButton" Content="📁 Sfoglia Cartella" Background="#007ACC" Foreground="White" CornerRadius="5" Padding="15,5" HorizontalAlignment="Center" FontWeight="SemiBold"/>
+                                    <Button Name="IndexButton" Content="🧠 Memorizza Progetto" Background="#4EC9B0" Foreground="#1E1E1E" CornerRadius="5" Padding="15,5" HorizontalAlignment="Center" FontWeight="SemiBold" IsEnabled="False"/>
+                                    <Button Name="OpenBlueprintButton" Content="📜 Apri Blueprint" Background="#D97706" Foreground="White" CornerRadius="5" Padding="15,5" HorizontalAlignment="Center" FontWeight="SemiBold" IsVisible="False" Cursor="Hand"/>
+                                    
+                                    <Button Name="CloseProjectButton" Content="🔌 Scollega Progetto" Background="#D32F2F" Foreground="White" CornerRadius="5" Padding="15,5" HorizontalAlignment="Center" FontWeight="SemiBold" IsVisible="False" Cursor="Hand"/>
+                                </StackPanel>
+                            </Border>
+                            
+                            <Border Grid.Row="3" Background="#252526" CornerRadius="8" Padding="15" Margin="10,0,10,10">
+                                <Grid RowDefinitions="Auto, *">
+                                    <StackPanel Grid.Row="0" Margin="0,0,0,10">
+                                        <TextBlock Text="Memoria Vettoriale (RAG)" FontSize="12" FontWeight="SemiBold" Foreground="#A0A0A0"/>
+                                        <ProgressBar Value="0" Name="ContextProgressBar" Maximum="100" Height="6" Margin="0,8,0,0" Foreground="#4EC9B0" Background="#333337"/>
+                                        <TextBlock Name="ContextStatusText" Text="Database in attesa..." FontSize="11" Foreground="#6D6D6D" Margin="0,5,0,0"/>
+                                    </StackPanel>
+                                    <ListBox Grid.Row="1" Background="Transparent" Name="ActiveContextFilesListBox" MaxHeight="100" BorderThickness="0" FontSize="11"/>
+                                </Grid>
+                            </Border>
+                        </Grid>
+                    </Border>
+
+                    <Grid Grid.Column="1" RowDefinitions="Auto, *, Auto" Margin="20">
+                        <Border Grid.Row="0" Background="#252526" CornerRadius="8" Padding="15" Margin="0,0,0,15" BorderBrush="#3F3F46" BorderThickness="1">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <TextBlock Text="🧠" FontSize="20"/>
+                                    <TextBlock Text="Master Mentor (Gemma 3 27B)" FontSize="16" FontWeight="Bold" VerticalAlignment="Center"/>
+                                    <TextBlock Name="ShadowMentorStatus" Text="(In consultazione con Shadow Mentor...)" Foreground="#D97706" FontStyle="Italic" VerticalAlignment="Center" Margin="10,0,0,0" IsVisible="False"/>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <ScrollViewer Grid.Row="1" Margin="0,0,0,15">
+                            <StackPanel Name="ChatLogPanel" Spacing="15">
+                                <TextBlock Text="[SISTEMA]: In attesa di input. Il Board Direttivo è pronto." Foreground="#858585" FontStyle="Italic"/>
+                            </StackPanel>
+                        </ScrollViewer>
+
+                        <StackPanel Grid.Row="2" Spacing="10">
+                            <Border Name="ImagePreviewContainer" Background="#333337" CornerRadius="8" Padding="10" IsVisible="False" HorizontalAlignment="Left" BorderBrush="#007ACC" BorderThickness="1">
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <Image Name="AttachedImagePreview" MaxWidth="60" MaxHeight="60" Margin="0,0,10,0" Stretch="Uniform" />
+                                    <TextBlock Name="AttachedImageName" Text="screenshot.png" VerticalAlignment="Center" Foreground="#E0E0E0" FontWeight="SemiBold"/>
+                                    <Button Name="RemoveImageButton" Content="❌" Background="Transparent" Foreground="#FF5C5C" VerticalAlignment="Center" Cursor="Hand"/>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Background="#252526" CornerRadius="12" Padding="8" BorderBrush="#3F3F46" BorderThickness="1">
+                                <Grid ColumnDefinitions="Auto, *, Auto, Auto, Auto">
+                                    <Button Grid.Column="0" Name="AttachImageButton" Content="📎" FontSize="20" Margin="5,0,10,0" Background="Transparent" Foreground="#A0A0A0" VerticalAlignment="Bottom" Cursor="Hand"/>
+                                    <TextBox Grid.Column="1" Name="UserInputTextBox" 
+                                             PlaceholderText="Esponi la tua visione al Master Mentor..." 
+                                             TextWrapping="Wrap" AcceptsReturn="True" 
+                                             Margin="0" MinHeight="45" MaxHeight="200" 
+                                             VerticalAlignment="Stretch" 
+                                             Background="Transparent" BorderThickness="0" FontSize="14"/>
+                                    <Button Grid.Column="2" Name="MicButton" Content="🎙️" FontSize="20" Margin="10,0,5,0" Background="Transparent" Foreground="#A0A0A0" VerticalAlignment="Bottom" Cursor="Hand"/>
+                                    
+                                    <ComboBox Grid.Column="3" x:Name="ModeSelector" SelectedIndex="0" VerticalAlignment="Bottom" Margin="5,0,5,2" Height="42" Background="#1E1E1E" Foreground="White" CornerRadius="6">
+                                        <ComboBoxItem>🛠️ ENGINEERING MODE (C# / IDE)</ComboBoxItem>
+                                        <ComboBoxItem>🔬 ACADEMIC RESEARCH (Web RAG)</ComboBoxItem>
+                                    </ComboBox>
+
+                                    <Button Grid.Column="4" Name="SendButton" Content="Invia Direttiva" Margin="5,0,0,0" Background="#007ACC" Foreground="White" VerticalAlignment="Bottom" Padding="25,12" CornerRadius="8" FontWeight="Bold" Cursor="Hand"/>
+                                </Grid>
+                            </Border>
+                        </StackPanel>
+                    </Grid>
+
+                    <Border Grid.Column="2" Background="#1E1E1E" BorderBrush="#3F3F46" BorderThickness="1,0,0,0">
+                        <Grid RowDefinitions="Auto, *">
+                            <Border Grid.Row="0" Background="#252526" BorderBrush="#3F3F46" BorderThickness="0,0,0,1" Padding="15">
+                                <StackPanel Spacing="15">
+                                    <TextBlock Text="⚙️ STATO PRODUZIONE (AUTONOMA)" FontWeight="Black" FontSize="14" Foreground="#D97706" LetterSpacing="1"/>
+                                    
+                                    <Grid ColumnDefinitions="*, *, *">
+                                        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="5">
+                                            <TextBlock Text="⚫" Foreground="Gray" Name="LedArchitect"/>
+                                            <TextBlock Text="Architetto" FontSize="12" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="5">
+                                            <TextBlock Text="⚫" Foreground="Gray" Name="LedCoder"/>
+                                            <TextBlock Text="Coder" FontSize="12" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="5">
+                                            <TextBlock Text="⚫" Foreground="Gray" Name="LedTribunal"/>
+                                            <TextBlock Text="Tribunale" FontSize="12" VerticalAlignment="Center" FontWeight="Bold"/>
+                                        </StackPanel>
+                                    </Grid>
+                                    
+                                    <Border Background="#18181A" CornerRadius="4" Padding="8">
+                                        <StackPanel Orientation="Horizontal" Spacing="15" HorizontalAlignment="Center">
+                                            <TextBlock Text="Ispettore 1" FontSize="10" Foreground="#858585" Name="TxtCritic1"/>
+                                            <TextBlock Text="Hacker 2" FontSize="10" Foreground="#858585" Name="TxtCritic2"/>
+                                            <TextBlock Text="Saggio 3" FontSize="10" Foreground="#858585" Name="TxtCritic3"/>
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
+                            </Border>
+
+                            <ScrollViewer Grid.Row="1" Margin="15">
+                                <StackPanel Name="PipelineLogPanel" Spacing="10">
+                                    <TextBlock Text="> Sistemi pronti. 112GB VRAM Allocata." Foreground="#4EC9B0" FontFamily="Consolas" FontSize="12"/>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Grid>
+                    </Border>
+                    
+                    <Border Name="SplashScreenOverlay" Background="#18181A" ZIndex="999" IsVisible="True" Grid.ColumnSpan="3">
+                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="30">
+                            <TextBlock Text="OPERA SUPREMA" FontSize="56" FontWeight="Black" Foreground="#F5F5F5" HorizontalAlignment="Center" LetterSpacing="3"/>
+                            <TextBlock Text="Seleziona l'Infrastruttura Neurale" FontSize="18" Foreground="#A0A0A0" HorizontalAlignment="Center" Margin="0,0,0,20"/>
+                            
+                            <Grid ColumnDefinitions="Auto, 20, Auto" HorizontalAlignment="Center">
+                                <Button Grid.Column="0" Name="BootIdeModeButton" Background="#252526" BorderBrush="#007ACC" BorderThickness="2" CornerRadius="12" Padding="30,40" Cursor="Hand">
+                                    <StackPanel Spacing="15" Width="250">
+                                        <TextBlock Text="🎓" FontSize="48" HorizontalAlignment="Center"/>
+                                        <TextBlock Text="ACCADEMIA (Ricerca)" FontSize="20" FontWeight="Bold" Foreground="#007ACC" HorizontalAlignment="Center"/>
+                                        <TextBlock Text="Modelli Qwen MoE 122B. Ottimizzato per ricerca avanzata, analisi medica e normativa." TextWrapping="Wrap" TextAlignment="Center" Foreground="#858585" FontSize="13"/>
+                                    </StackPanel>
+                                </Button>
+                                
+                                <Button Grid.Column="2" Name="BootHackerModeButton" Background="#252526" BorderBrush="#D97706" BorderThickness="2" CornerRadius="12" Padding="30,40" Cursor="Hand">
+                                    <StackPanel Spacing="15" Width="250">
+                                        <TextBlock Text="☠️" FontSize="48" HorizontalAlignment="Center"/>
+                                        <TextBlock Text="CYBERSEC HACKER" FontSize="20" FontWeight="Bold" Foreground="#D97706" HorizontalAlignment="Center"/>
+                                        <TextBlock Text="Modelli Dolphin Uncensored. Zero filtri etici. Ottimizzato per Penetration Testing e Security." TextWrapping="Wrap" TextAlignment="Center" Foreground="#858585" FontSize="13"/>
+                                    </StackPanel>
+                                </Button>
+                            </Grid>
+                            
+                            <ProgressBar Name="StartupProgressBar" Minimum="0" Maximum="100" Value="0" Height="6" Width="500" Foreground="#007ACC" Background="#333337" Margin="0,30,0,0" IsVisible="False"/>
+                            <TextBlock Name="StartupStatusText" Text="In attesa di selezione..." FontSize="13" Foreground="Gray" HorizontalAlignment="Center" IsVisible="False"/>
+                        </StackPanel>
+                    </Border>
+                    
+                </Grid>
+            </SplitView.Content>
+        </SplitView>
+        
+        <!-- OVERLAY SMART SWAP (Feedback visivo spostato DENTRO il Grid principale) -->
+        <Border Name="SwapOverlay" Background="#E60F0F15" IsVisible="False" ZIndex="1000" Grid.RowSpan="2">
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="20">
+                <TextBlock Name="SwapStatusText" Text="Riconfigurazione Infrastruttura in corso..."
+                           Foreground="SpringGreen" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center"/>
+                <ProgressBar Name="SwapProgressBar" IsIndeterminate="True" Height="20" Width="300"
+                             Foreground="SpringGreen" Background="#2A2A35"/>
+            </StackPanel>
+        </Border>
+
+    </Grid>
+</Window>

@@ -1,0 +1,60 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="OperaSuprema.GUI.BlueprintEditorWindow"
+        Title="Hub Blueprint - Specifica di Progetto" Width="700" Height="650"
+        Background="#1E1E1E" Foreground="#F5F5F5" WindowStartupLocation="CenterOwner">
+    
+    <Grid RowDefinitions="Auto, *, Auto" Margin="25">
+        <!-- INTESTAZIONE -->
+        <StackPanel Grid.Row="0" Spacing="5" Margin="0,0,0,20">
+            <TextBlock Text="📜 Configurazione Guidata Blueprint" FontSize="22" FontWeight="Bold" Foreground="#D97706"/>
+            <TextBlock Text="Definisci i requisiti per l'Architetto e il Coder. Passa il mouse sui punti interrogativi per l'aiuto." FontSize="13" Foreground="#A0A0A0"/>
+        </StackPanel>
+
+        <!-- CAMPI DI COMPILAZIONE GUIDATA -->
+        <ScrollViewer Grid.Row="1">
+            <StackPanel Spacing="20">
+                
+                <!-- CAMPO 1: OBIETTIVO -->
+                <StackPanel Spacing="8">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="Obiettivo Principale del Software" FontWeight="Bold" Foreground="#E0E0E0" VerticalAlignment="Center"/>
+                        <Border Background="#333337" CornerRadius="10" Width="20" Height="20" ToolTip.Tip="Descrivi in modo chiaro cosa deve fare l'applicazione e quale problema risolve.">
+                            <TextBlock Text="?" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#007ACC" FontWeight="Bold" FontSize="12"/>
+                        </Border>
+                    </StackPanel>
+                    <TextBox Name="TxtObjective" AcceptsReturn="True" TextWrapping="Wrap" Height="90" Background="#252526" BorderBrush="#3F3F46" PlaceholderText="Es: Creare una dashboard in Avalonia UI per il monitoraggio dei container..."/>
+                </StackPanel>
+
+                <!-- CAMPO 2: REQUISITI TECNICI -->
+                <StackPanel Spacing="8">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="Requisiti Tecnici e Architettura" FontWeight="Bold" Foreground="#E0E0E0" VerticalAlignment="Center"/>
+                        <Border Background="#333337" CornerRadius="10" Width="20" Height="20" ToolTip.Tip="Indica librerie specifiche, pattern (es. MVC) o vincoli strutturali che il Coder deve tassativamente rispettare.">
+                            <TextBlock Text="?" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#007ACC" FontWeight="Bold" FontSize="12"/>
+                        </Border>
+                    </StackPanel>
+                    <TextBox Name="TxtTechSpecs" AcceptsReturn="True" TextWrapping="Wrap" Height="90" Background="#252526" BorderBrush="#3F3F46" PlaceholderText="Es: Usare Avalonia 11.1.0, organizzare in cartelle Views/Models, persistenza su JSON locale..."/>
+                </StackPanel>
+
+                <!-- CAMPO 3: REGOLE E STILE -->
+                <StackPanel Spacing="8">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="Regole di Stile e Vincoli per il Coder" FontWeight="Bold" Foreground="#E0E0E0" VerticalAlignment="Center"/>
+                        <Border Background="#333337" CornerRadius="10" Width="20" Height="20" ToolTip.Tip="Aggiungi indicazioni particolari sullo stile del codice, commenti in italiano o gestione degli errori.">
+                            <TextBlock Text="?" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#007ACC" FontWeight="Bold" FontSize="12"/>
+                        </Border>
+                    </StackPanel>
+                    <TextBox Name="TxtRules" AcceptsReturn="True" TextWrapping="Wrap" Height="90" Background="#252526" BorderBrush="#3F3F46" PlaceholderText="Es: Commenta i metodi asincroni complessi, gestisci le eccezioni con feedback visivo nella chat..."/>
+                </StackPanel>
+
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- BOTTONI DI AZIONE -->
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10" Margin="0,20,0,0">
+            <Button Content="Annulla" Click="OnCancelClicked" Background="#3F3F46" Foreground="White" Padding="15,8" Cursor="Hand"/>
+            <Button Content="💾 Salva Blueprint" Click="OnSaveClicked" Background="#D97706" Foreground="White" FontWeight="Bold" Padding="20,8" Cursor="Hand"/>
+        </StackPanel>
+    </Grid>
+</Window>

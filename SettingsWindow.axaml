@@ -1,0 +1,58 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="OperaSuprema.GUI.SettingsWindow"
+        Title="Hub Impostazioni - Opera Suprema" Width="850" Height="700"
+        Background="#1E1E1E" WindowStartupLocation="CenterOwner">
+    
+    <Grid RowDefinitions="Auto, Auto, *, Auto" Margin="20">
+        <TextBlock Grid.Row="0" Text="⚙️ Gestione Architettura Neurale" FontSize="22" FontWeight="Bold" Foreground="#007ACC" Margin="0,0,0,15"/>
+        
+        <!-- BARRA STRUMENTI GLOBALE -->
+        <StackPanel Grid.Row="1" Spacing="10" Margin="0,0,0,15">
+            
+            <!-- SEZIONE TELEGRAM -->
+            <Border Background="#252526" Padding="10" CornerRadius="6">
+                <Grid ColumnDefinitions="Auto, *">
+                    <TextBlock Grid.Column="0" Text="🤖 Telegram Bot Token:" VerticalAlignment="Center" Foreground="White" FontWeight="Bold" Margin="0,0,10,0"/>
+                    <TextBox Grid.Column="1" Name="TelegramTokenTextBox" PasswordChar="*" PlaceholderText="Incolla qui il tuo token (es. 823855...)" Background="#1E1E1E" ToolTip.Tip="⚠️ Dopo aver inserito o modificato il Token, devi riavviare l'IDE per agganciare il Bot Telegram."/>
+                </Grid>
+            </Border>
+
+	    <!-- SEZIONE LLAMA.CPP -->
+            <Border Background="#252526" Padding="10" CornerRadius="6">
+                <Grid ColumnDefinitions="Auto, *, Auto">
+                    <TextBlock Grid.Column="0" Text="⚙️ Eseguibile llama-server:" VerticalAlignment="Center" Foreground="White" FontWeight="Bold" Margin="0,0,10,0"/>
+                    <TextBox Grid.Column="1" Name="LlamaPathTextBox" IsReadOnly="True" PlaceholderText="Seleziona il file llama-server (.exe o binario linux)..." Background="#1E1E1E"/>
+                    <Button Grid.Column="2" Name="BtnBrowseLlama" Content="📁 Sfoglia..." Margin="10,0,0,0" Cursor="Hand" Background="#3F3F46" Foreground="White"/>
+                </Grid>
+            </Border>
+
+            <!-- SEZIONE OTTIMIZZAZIONE VRAM -->
+            <Border Background="#252526" Padding="10" CornerRadius="6">
+                <Grid ColumnDefinitions="*, Auto">
+                    <CheckBox Grid.Column="0" Name="ChkHotSwap" Content="🔄 Ottimizzazione VRAM (Smart Hot-Swapping tra Mentore e Coder)" Foreground="SpringGreen" FontWeight="Bold"/>
+                    <Button Grid.Column="1" Content="⚠️ Ripristina Default Sicuri" Click="OnRestoreDefaultsClicked" Background="#D32F2F" Foreground="White" FontWeight="Bold" Cursor="Hand"/>
+                </Grid>
+            </Border>
+            
+        </StackPanel>
+        
+        <TabControl Grid.Row="2" Background="#252526">
+            <TabItem Header="☠️ CYBERSEC HACKER (Sviluppo)">
+                <ScrollViewer>
+                    <StackPanel Name="PanelHacker" Margin="10" Spacing="15"/>
+                </ScrollViewer>
+            </TabItem>
+            <TabItem Header="🎓 ACCADEMIA (Ricerca)">
+                <ScrollViewer>
+                    <StackPanel Name="PanelAccademia" Margin="10" Spacing="15"/>
+                </ScrollViewer>
+            </TabItem>
+        </TabControl>
+
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10" Margin="0,15,0,0">
+            <Button Content="Annulla" Click="OnCancelClicked" Background="#3F3F46" Foreground="White" Cursor="Hand"/>
+            <Button Content="💾 Salva e Applica" Click="OnSaveClicked" Background="#007ACC" Foreground="White" FontWeight="Bold" Cursor="Hand"/>
+        </StackPanel>
+    </Grid>
+</Window>
