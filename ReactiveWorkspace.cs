@@ -35,42 +35,50 @@ namespace OperaSuprema.Core
 
         private void OnWorkspaceChanged(object sender, FileSystemEventArgs e)
         {
-            // Evitiamo le cartelle temporanee
-            if (e.FullPath.Contains("/bin/") || e.FullPath.Contains("/obj/")) return;
+            // Evitiamo le cartelle temporanee, bin, obj, git
+            if (e.FullPath.Contains("/bin/") || e.FullPath.Contains("/obj/") || e.FullPath.Contains(".git")) return;
 
-            // Creiamo copie locali (snapshot)
-            var currentManager = _workspaceManager;
             var currentMemory = _vectorMemory;
-
-            if (currentManager != null && currentMemory != null)
+            if (currentMemory != null)
             {
-                // PATCH: Aggiungiamo il punto esclamativo (!) per forzare il compilatore a ignorare il warning
-                string nuovoContesto = currentManager!.GenerateProjectContextPayload();
-                
-                // --- INIEZIONE NEL DATABASE VETTORIALE (PATCH MEMORIA) ---
                 Task.Run(async () => 
                 {
-                    try 
+                    string fileContent = null!;
+                    int maxRetries = 5;
+                    int delayMs = 300;
+
+                    // --- PATCH: Retry Pattern per eludere il File Locking di dotnet o del Coder ---
+                    for (int i = 0; i < maxRetries; i++)
                     {
-                        if (!string.IsNullOrWhiteSpace(nuovoContesto))
+                        try 
                         {
-                            int chunkSize = 1500;
-                            for (int i = 0; i < nuovoContesto.Length; i += chunkSize)
-                            {
-                                string chunk = nuovoContesto.Substring(i, Math.Min(chunkSize, nuovoContesto.Length - i));
-                                await currentMemory!.MemorizeContentAsync("[WORKSPACE_LIVE_CONTEXT]", chunk);
-                            }
+                            fileContent = await File.ReadAllTextAsync(e.FullPath);
+                            break; // Lettura riuscita, sblocco l'handle e interrompo il ciclo
+                        }
+                        catch (IOException)
+                        {
+                            if (i == maxRetries - 1) return; // Fallimento accettato dopo 1.5 sec
+                            await Task.Delay(delayMs);
+                            delayMs *= 2; // Backoff esponenziale
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"[ERRORE RAG SYSTEM]: {ex.Message}");
+                            return;
                         }
                     }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"[ERRORE RAG]: Impossibile sincronizzare la memoria del workspace: {ex.Message}");
-                    }
-                });
 
-                // Aggiorniamo la UI in sicurezza
-                Dispatcher.UIThread.Post(() => {
-                    // Qui manderemo i dati visivi alla barra di progresso
+                    if (!string.IsNullOrWhiteSpace(fileContent))
+                    {
+                        string nomeFile = Path.GetFileName(e.FullPath);
+                        int chunkSize = 1500;
+                        for (int i = 0; i < fileContent.Length; i += chunkSize)
+                        {
+                            string chunk = fileContent.Substring(i, Math.Min(chunkSize, fileContent.Length - i));
+                            // Usa il nome del file reale nel tag, così il DB capisce cosa sta aggiornando
+                            await currentMemory.MemorizeContentAsync($"[LIVE_SYNC: {nomeFile}]", chunk);
+                        }
+                    }
                 });
             }
         }

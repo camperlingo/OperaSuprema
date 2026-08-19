@@ -5,6 +5,13 @@ obj/
 # Ignora i file di configurazione (Protezione Token Telegram e Dati Sensibili)
 *.json
 
-# Ignora i file di backup locali di Emanuele
+# Ignora i file di backup locali
 *.bak
 *.old
+
+# Ignora la cartella di memoria di progetto e i log locali (Il Cervello di Opera Suprema)
+.nexus/
+
+# Ignora i file audio temporanei (Whisper / Telegram Voice / Piper TTS)
+*.wav
+*.ogg

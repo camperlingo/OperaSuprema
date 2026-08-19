@@ -32,7 +32,7 @@ namespace OperaSuprema.GUI
         private string? _currentImagePath;
         private string? _currentWorkspacePath;
 
-	private SessionManager _sessionManager = new SessionManager();
+	private SessionManager _sessionManager;
 	private ChatSession _currentSession = new ChatSession();
         
         // Cronologia e Flag Vocale
@@ -54,10 +54,17 @@ namespace OperaSuprema.GUI
         private bool _isRecording = false;
         private System.Diagnostics.Process? _audioProcess;
         private readonly string _audioTempPath = Path.Combine(Path.GetTempPath(), "opera_dictation.wav");
+        private int _runtimeCrashCount = 0; 
+        private CancellationTokenSource _generationCts = new();
+        private readonly string _userHome = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
         public MainWindow()
         {
             InitializeComponent();
+
+            // --- INIZIALIZZAZIONE CATENA DELLA MEMORIA NVME ---
+            var stepChatManager = new StepChatManager(_vectorMemory);
+            _sessionManager = new SessionManager(stepChatManager);
 
 	    // Aggancio bottone Blueprint
             var btnBlueprint = this.FindControl<Button>("OpenBlueprintButton");
@@ -206,7 +213,8 @@ namespace OperaSuprema.GUI
             
             if (string.IsNullOrWhiteSpace(cleanText)) return;
 
-            string piperDir = "/home/spiderman/ai_models/piper";
+            // --- USO VARIABILE DINAMICA PER I PATH DI PIPER ---
+            string piperDir = Path.Combine(_userHome, "ai_models/piper");
             string audioOut = "/tmp/opera_voice_response.wav";
             
             string bashCommand = $"echo \"{cleanText}\" | {piperDir}/piper/piper -m {piperDir}/it_IT-paola-medium.onnx -f {audioOut} && aplay {audioOut}";
@@ -523,6 +531,10 @@ namespace OperaSuprema.GUI
             inputTextBox.IsEnabled = false;
             if (sendBtn != null) sendBtn.IsEnabled = false;
 
+            // Inneschiamo un fusibile logico da 120 secondi per prevenire zombie states
+            if (!_generationCts.IsCancellationRequested) _generationCts.Cancel();
+            _generationCts = new CancellationTokenSource(TimeSpan.FromSeconds(120));
+            
             try
             {
                 string userText = inputTextBox.Text ?? "";
@@ -596,82 +608,87 @@ namespace OperaSuprema.GUI
             var modeSelector = this.FindControl<ComboBox>("ModeSelector"); 
             bool isProgrammingMode = modeSelector == null || modeSelector.SelectedIndex == 0; 
 
-            // --- INIZIO PATCH: BYPASS RAG DURANTE ESCALATION ---
+            // --- INIZIO PATCH: RICERCA DIAGNOSTICA AUTONOMA ---
             bool isSystemEscalation = userText.StartsWith("[SISTEMA: ESCALATION CRITICA");
-            string contextData = ""; // Dichiariamo fuori per poterlo usare dopo
+            string contextData = ""; 
+            string searchQuery = userText; // Di base cerchiamo la domanda dell'utente
 
-            if (!isSystemEscalation)
+            if (isSystemEscalation)
             {
-                Dispatcher.UIThread.Post(() => AppendToChat($"[SISTEMA]: 🧠 Ricerca simultanea su Database Vettoriale e Rete Web in corso...", Avalonia.Media.Brushes.Cyan));
-
-                // 1. Eseguiamo la ricerca locale (Qdrant) e quella esterna (Web) IN PARALLELO
-                Task<string> webSearchTask = Task.Run(() => ExecuteBackgroundWebResearchAsync(userText));
-                Task<List<string>> qdrantTask = _vectorMemory.SearchContextAsync(userText, topK: 4);
-
-                await Task.WhenAll(webSearchTask, qdrantTask); 
-
-                // --- RADAR DI RETE E TOLLERANZA GUASTI ---
-                string webContext = "";
-                try 
+                // Estrazione chirurgica: Peschiamo solo il testo dell'errore saltando il codice sorgente
+                var match = Regex.Match(userText, @"LOG ERRORE FATALE:\r?\n(.*?)\r?\n", RegexOptions.Singleline);
+                if (match.Success)
                 {
-                    webContext = await webSearchTask; // Estraiamo il risultato del web
-
-                    // Rilevamento dei blocchi tipici dei motori di ricerca (Anti-Bot) o errori di rete
-                    if (webContext.Contains("403 Forbidden") || webContext.Contains("429 Too Many Requests") || webContext.Contains("Impossibile connettersi"))
-                    {
-                        Dispatcher.UIThread.Post(() => AppendToChat("[⚠️ ALLARME RETE]: Il motore di ricerca ha bloccato la richiesta (Anti-Bot) o la connessione è instabile. Il sistema passa in modalità 'Sopravvivenza' usando SOLO il Database Locale.", Avalonia.Media.Brushes.OrangeRed));
-                        webContext = ""; // Svuotiamo per non inquinare la mente dell'Architetto
-                    }
-                }
-                catch (Exception)
-                {
-                    Dispatcher.UIThread.Post(() => AppendToChat($"[⚠️ ALLARME RETE]: Rete assente o server irraggiungibile. L'IDE opererà esclusivamente tramite RAG Locale.", Avalonia.Media.Brushes.OrangeRed));
-                    webContext = ""; 
-                }
-
-                List<string> libraryResults = qdrantTask.Result;
-
-                if (libraryResults.Count > 0)
-                {
-                    Dispatcher.UIThread.Post(() => AppendToChat($"[ACCADEMIA]: 📚 Estratti {libraryResults.Count} frammenti di letteratura dal database locale.", Avalonia.Media.Brushes.LightGreen));
-                    contextData += "=== DATI AZIENDALI (QDRANT) ===\n" + string.Join("\n\n", libraryResults) + "\n===============================\n\n";
+                    // Forziamo il web crawler a cercare la soluzione specifica per Avalonia 11 C#
+                    searchQuery = "Avalonia 11 fix error " + match.Groups[1].Value.Trim();
+                    // Evitiamo URL troppo lunghi che manderebbero in blocco DuckDuckGo
+                    if (searchQuery.Length > 150) searchQuery = searchQuery.Substring(0, 150);
                 }
                 
-                if (!string.IsNullOrEmpty(webContext) && !webContext.StartsWith("[INFO]"))
-                {
-                    Dispatcher.UIThread.Post(() => AppendToChat($"[SEGUGIO WEB]: 🌐 Trovati dati freschi da internet. Iniezione nel contesto neurale...", Avalonia.Media.Brushes.LightGreen));
-                    contextData += "=== DATI FRESCHI DA INTERNET ===\n" + webContext + "\n================================\n\n";
-
-                    // Archiviazione automatica intelligente (ANTI-DUPLICATO)
-                    _ = Task.Run(async () => 
-                    {
-                        try {
-                            // 1. Verifichiamo se il DB ci ha già restituito questo stesso identico contesto oggi o in passato
-                            bool isAlreadyKnown = libraryResults.Any(dbDoc => 
-                                dbDoc == webContext || 
-                                (dbDoc.Length > 100 && webContext.Contains(dbDoc.Substring(0, 100)))
-                            );
-
-                            if (!isAlreadyKnown)
-                            {
-                                string safeTitle = userText.Length > 20 ? userText.Substring(0, 20) : userText;
-                                string safeLabel = $"[SKILL_WEB_{DateTime.Now:yyyyMMdd}] {safeTitle}";
-                                await _vectorMemory.MemorizeContentAsync(safeLabel, webContext);
-                                Dispatcher.UIThread.Post(() => AppendToChat($"[⚙️ COSCIENZA]: Nuovi dati web cristallizzati permanentemente nel database.", Avalonia.Media.Brushes.SpringGreen));
-                            }
-                            else
-                            {
-                                Dispatcher.UIThread.Post(() => AppendToChat($"[⚙️ COSCIENZA]: Dati web scartati (conoscenza già assimilata in precedenza).", Avalonia.Media.Brushes.Gray));
-                            }
-                        } catch { }
-                    });
-                }
+                Dispatcher.UIThread.Post(() => AppendToChat($"[SISTEMA]: 🚨 Escalation! Il Segugio Web sta interrogando internet per risolvere l'errore di compilazione...", Avalonia.Media.Brushes.Orange));
             }
             else
             {
-                Dispatcher.UIThread.Post(() => AppendToChat($"[SISTEMA]: 🚨 Escalation in corso. Moduli RAG disabilitati per garantire la purezza diagnostica.", Avalonia.Media.Brushes.Orange));
+                Dispatcher.UIThread.Post(() => AppendToChat($"[SISTEMA]: 🧠 Ricerca simultanea su Database Vettoriale e Rete Web in corso...", Avalonia.Media.Brushes.Cyan));
             }
-            // --- FINE PATCH BYPASS ---
+
+            // 1. Eseguiamo la ricerca usando la searchQuery (che ora contiene la stringa intelligente in caso di crash)
+            Task<string> webSearchTask = Task.Run(() => ExecuteBackgroundWebResearchAsync(searchQuery));
+            Task<List<string>> qdrantTask = _vectorMemory.SearchContextAsync(searchQuery, topK: 4);
+
+            await Task.WhenAll(webSearchTask, qdrantTask); 
+
+            // --- RADAR DI RETE E TOLLERANZA GUASTI ---
+            string webContext = "";
+            try 
+            {
+                webContext = await webSearchTask; 
+
+                if (webContext.Contains("403 Forbidden") || webContext.Contains("429 Too Many Requests") || webContext.Contains("Impossibile connettersi"))
+                {
+                    Dispatcher.UIThread.Post(() => AppendToChat("[⚠️ ALLARME RETE]: Il motore di ricerca ha bloccato la richiesta. Modalità 'Sopravvivenza' (Solo DB Locale).", Avalonia.Media.Brushes.OrangeRed));
+                    webContext = ""; 
+                }
+            }
+            catch (Exception)
+            {
+                Dispatcher.UIThread.Post(() => AppendToChat($"[⚠️ ALLARME RETE]: Server irraggiungibile. L'IDE opererà esclusivamente tramite RAG Locale.", Avalonia.Media.Brushes.OrangeRed));
+                webContext = ""; 
+            }
+
+            List<string> libraryResults = qdrantTask.Result;
+
+            if (libraryResults.Count > 0)
+            {
+                Dispatcher.UIThread.Post(() => AppendToChat($"[ACCADEMIA]: 📚 Estratti {libraryResults.Count} frammenti dal database locale.", Avalonia.Media.Brushes.LightGreen));
+                contextData += "=== DATI AZIENDALI (QDRANT) ===\n" + string.Join("\n\n", libraryResults) + "\n===============================\n\n";
+            }
+            
+            if (!string.IsNullOrEmpty(webContext) && !webContext.StartsWith("[INFO]"))
+            {
+                Dispatcher.UIThread.Post(() => AppendToChat($"[SEGUGIO WEB]: 🌐 Acquisita documentazione tecnica online. Iniezione nel contesto...", Avalonia.Media.Brushes.LightGreen));
+                contextData += "=== DOCUMENTAZIONE WEB (SOLUZIONI RECENTI) ===\n" + webContext + "\n==============================================\n\n";
+
+                // Archiviazione automatica (La Coscienza del Programmatore)
+                _ = Task.Run(async () => 
+                {
+                    try {
+                        bool isAlreadyKnown = libraryResults.Any(dbDoc => 
+                            dbDoc == webContext || 
+                            (dbDoc.Length > 100 && webContext.Contains(dbDoc.Substring(0, 100)))
+                        );
+
+                        if (!isAlreadyKnown)
+                        {
+                            string safeTitle = searchQuery.Length > 30 ? searchQuery.Substring(0, 30) : searchQuery;
+                            string safeLabel = $"[SKILL_WEB_{DateTime.Now:yyyyMMdd}] {safeTitle}";
+                            await _vectorMemory.MemorizeContentAsync(safeLabel, webContext);
+                            Dispatcher.UIThread.Post(() => AppendToChat($"[⚙️ COSCIENZA]: Soluzione dal web cristallizzata nel database per evitare bug futuri.", Avalonia.Media.Brushes.SpringGreen));
+                        }
+                    } catch { }
+                });
+            }
+            // --- FINE PATCH RICERCA AUTONOMA ---
 
             // FIX CRITICO JINJA: Assicuriamoci che l'ultimo ruolo NON sia già 'user' prima di aggiungere.
             // Se c'è stato un errore al giro precedente, rimuoviamo l'orfanello per mantenere l'alternanza.
@@ -683,7 +700,7 @@ namespace OperaSuprema.GUI
             // FIX CONTEXT BLOAT: Salviamo SOLO il testo puro dell'utente (o del Sistema) nella cronologia permanente
             _chatHistory.Add(new Dictionary<string, string> { { "role", "user" }, { "content", userText } });
             _currentSession.Messages.Add(new ChatMessage { Role = "user", Content = userText });
-            _sessionManager.SaveSession(_currentSession, _currentWorkspacePath);
+            await _sessionManager.SaveSessionAsync(_currentSession, _currentWorkspacePath);
 
             // Prepariamo un "clone" temporaneo della chat da inviare al server solo per questo giro
             var tempHistory = new List<Dictionary<string, string>>(_chatHistory);
@@ -775,6 +792,11 @@ namespace OperaSuprema.GUI
                 Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
             };
 
+            // --- INIZIO PATCH: RESET DEL TIMEOUT PER OGNI INFERENZA (5 MINUTI) ---
+            if (_generationCts != null && !_generationCts.IsCancellationRequested) _generationCts.Cancel();
+            _generationCts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+            // --- FINE PATCH ---
+
             StringBuilder fullResponse = new StringBuilder();
             try
             {
@@ -782,7 +804,7 @@ namespace OperaSuprema.GUI
                 var chatPanel = this.FindControl<StackPanel>("ChatLogPanel");
                 var scrollViewer = chatPanel?.Parent as ScrollViewer;
 
-                using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+                using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, _generationCts.Token);
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -817,7 +839,20 @@ namespace OperaSuprema.GUI
                 // Salvataggio pulito della risposta del Mentor
                 _chatHistory.Add(new Dictionary<string, string> { { "role", "assistant" }, { "content", fullResponse.ToString() } });
                 _currentSession.Messages.Add(new ChatMessage { Role = "assistant", Content = fullResponse.ToString() });
-                _sessionManager.SaveSession(_currentSession, _currentWorkspacePath);
+                await _sessionManager.SaveSessionAsync(_currentSession, _currentWorkspacePath);
+
+                // --- FIX OVERFLOW DI MEMORIA ---
+                if (_currentSession.Messages.Count + 1 < _chatHistory.Count) 
+                {
+                    var newHistory = new List<Dictionary<string, string>> { _chatHistory[0] };
+                    foreach (var msg in _currentSession.Messages)
+                    {
+                        newHistory.Add(new Dictionary<string, string> { { "role", msg.Role ?? "user" }, { "content", msg.Content ?? "" } });
+                    }
+                    _chatHistory.Clear();
+                    _chatHistory.AddRange(newHistory);
+                }
+
             }
             catch (Exception ex) { Dispatcher.UIThread.Post(() => AppendToChat($"[ERRORE MASTER]: {ex.Message}", Brushes.Red)); }
 
@@ -936,8 +971,10 @@ namespace OperaSuprema.GUI
             string failureConscienceContext = "";
             try
             {
-                // Cerca nel database vettoriale se ci sono fallimenti logici simili registrati
-                var pastFailures = await _vectorMemory.SearchContextAsync($"[COSCIENZA_FALLIMENTO] {plannerAnalysis}", topK: 2);
+                // PATCH: Cerca solo i primi 100 caratteri dell'analisi (il core del problema) per mantenere alta la coerenza vettoriale
+                string focusQuery = plannerAnalysis.Length > 100 ? plannerAnalysis.Substring(0, 100) : plannerAnalysis;
+                var pastFailures = await _vectorMemory.SearchContextAsync($"[COSCIENZA_FALLIMENTO] {focusQuery}", topK: 2);
+                
                 if (pastFailures != null && pastFailures.Count > 0)
                 {
                     failureConscienceContext = "\n=== MEMORIA DEI FALLIMENTI LOGICI ARCHIVIATI (EVITARE QUESTI PATTERN) ===\n" +
@@ -1020,13 +1057,18 @@ REGOLA SUPREMA DI FORMATTAZIONE: Per OGNI SINGOLO FILE, DEVI usare questo esatto
                 Content = new StringContent(System.Text.Json.JsonSerializer.Serialize(payload), System.Text.Encoding.UTF8, "application/json")
             };
 
+            // --- INIZIO PATCH: RESET DEL TIMEOUT PER OGNI INFERENZA (5 MINUTI) ---
+            if (_generationCts != null && !_generationCts.IsCancellationRequested) _generationCts.Cancel();
+            _generationCts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+            // --- FINE PATCH ---
+
             try
             {
                 var (aiMessageBlock, mainContainer) = AppendToChat("[CODER]:\n", Avalonia.Media.Brushes.Cyan, true, "[CODER]:\n");
                 var chatPanel = this.FindControl<StackPanel>("ChatLogPanel");
                 var scrollViewer = chatPanel?.Parent as ScrollViewer;
 
-                using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+                using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, _generationCts.Token);
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -1071,7 +1113,19 @@ REGOLA SUPREMA DI FORMATTAZIONE: Per OGNI SINGOLO FILE, DEVI usare questo esatto
                 {
                     _currentSession.Messages.Last().Content += $"\n\n[RISCONTRO DI SISTEMA: IL CODER HA APPENA GENERATO E INCISO QUESTO CODICE]:\n{generatedCode}";
                 }
-                _sessionManager.SaveSession(_currentSession, _currentWorkspacePath);
+                await _sessionManager.SaveSessionAsync(_currentSession, _currentWorkspacePath);
+
+                // --- FIX OVERFLOW DI MEMORIA ---
+                if (_currentSession.Messages.Count + 1 < _chatHistory.Count) 
+                {
+                    var newHistory = new List<Dictionary<string, string>> { _chatHistory[0] };
+                    foreach (var msg in _currentSession.Messages)
+                    {
+                        newHistory.Add(new Dictionary<string, string> { { "role", msg.Role ?? "user" }, { "content", msg.Content ?? "" } });
+                    }
+                    _chatHistory.Clear();
+                    _chatHistory.AddRange(newHistory);
+                }
                 // ---------------------------------------------------------------------------
 
                 AutonomousProjectGenerator(generatedCode);
@@ -1160,7 +1214,7 @@ Prima di OGNI blocco di codice corretto, DEVI usare TASSATIVAMENTE il formato:
             if (outputSupreme.Contains("ERRORE") || outputSupreme.Contains("Exception"))
                 _ = Task.Run(() => ArchiveFailureConscienceAsync(sourceCode, "Critica rilevata dal Giudice Supremo."));
             else
-                _ = Task.Run(() => ArchiveSuccessKnowledgeAsync(sourceCode));
+                _ = Task.Run(() => ArchiveSuccessKnowledgeAsync(sourceCode, "Fix logico analizzato e approvato dal Revisore Supremo."));
 
             // --- NUOVA LOGICA INFALLIBILE DEL TRIBUNALE ---
             if (outputSupreme.Contains("[CODICE_APPROVATO]"))
@@ -1225,7 +1279,7 @@ Prima di OGNI blocco di codice corretto, DEVI usare TASSATIVAMENTE il formato:
                 var chatPanel = this.FindControl<StackPanel>("ChatLogPanel");
                 var scrollViewer = chatPanel?.Parent as ScrollViewer;
 
-                using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+                using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, _generationCts.Token);
                 if (!response.IsSuccessStatusCode) return $"[ERRORE {roleName}]: Server HTTP {response.StatusCode} non raggiungibile.";
 
                 using var stream = await response.Content.ReadAsStreamAsync();
@@ -1359,7 +1413,8 @@ Metti i comandi in un blocco codice ```bash. Non aggiungere altre spiegazioni.";
             if (string.IsNullOrWhiteSpace(aiOutput)) return;
 
             // Pattern adattivo: cattura sia [FILE: path] che // FILE: path, seguito dal blocco ```csharp
-            string pattern = @"(?:\[FILE:\s*|//\s*FILE:\s*)(?<path>[^\]\r\n]+)(?:\]|\r?\n)\s*```[a-zA-Z#]*\s*(?<code>.*?)\s*```";
+            // Pattern adattivo tollerante (ignora testi intermedi prima dei 3 apici grazie a .*?)
+            string pattern = @"(?:\[FILE:\s*|//\s*FILE:\s*)(?<path>[^\]\r\n]+)(?:\]|\r?\n).*?```[a-zA-Z#]*\s*(?<code>.*?)\s*```";
             var matches = Regex.Matches(aiOutput, pattern, RegexOptions.Singleline);
 
             if (matches.Count == 0)
@@ -1379,9 +1434,10 @@ Metti i comandi in un blocco codice ```bash. Non aggiungere altre spiegazioni.";
                 string codeContent = match.Groups["code"].Value;
                 string finalPath = rawPath;
 
+                // --- NELLA FASE 1: (CERCA QUESTA RIGA E SOSTITUISCILA) ---
                 if (rawPath.StartsWith("~"))
                 {
-                    finalPath = rawPath.Replace("~", "/home/spiderman");
+                    finalPath = rawPath.Replace("~", _userHome); // Uso variabile dinamica _userHome
                 }
                 else if (!Path.IsPathRooted(rawPath))
                 {
@@ -1481,9 +1537,10 @@ Metti i comandi in un blocco codice ```bash. Non aggiungere altre spiegazioni.";
                 {
                     string? directoryPath = Path.GetDirectoryName(fileToProcess.FinalPath);
                     
+                    // --- NELLA FASE 3: (CERCA QUESTO IF E SOSTITUISCILO) ---
                     if (!string.IsNullOrEmpty(directoryPath) && !Directory.Exists(directoryPath))
                     {
-                        if (!directoryPath.StartsWith("/home/spiderman") && !directoryPath.StartsWith("/run/media") && !directoryPath.StartsWith("/tmp"))
+                        if (!directoryPath.StartsWith(_userHome) && !directoryPath.StartsWith("/run/media") && !directoryPath.StartsWith("/tmp"))
                         {
                             Dispatcher.UIThread.Post(() => AppendToChat($"[VIOLAZIONE SICUREZZA]: Tentativo di scrittura non autorizzato in {directoryPath}", Brushes.Red));
                             continue;
@@ -1638,8 +1695,9 @@ Metti i comandi in un blocco codice ```bash. Non aggiungere altre spiegazioni.";
                     }
 
                     // 2. Esecuzione Whisper-CLI
-                    string whisperCliPath = "/home/spiderman/ai_models/whisper.cpp/build/bin/whisper-cli";
-                    string modelPath = "/home/spiderman/ai_models/whisper-large-v3.bin";
+                    // --- PATCH VISTA: USO _userHome PER EVITARE PATH HARDCODATI ---
+                    string whisperCliPath = Path.Combine(_userHome, "ai_models/whisper.cpp/build/bin/whisper-cli");
+                    string modelPath = Path.Combine(_userHome, "ai_models/whisper-large-v3.bin");
 
                     var psi = new System.Diagnostics.ProcessStartInfo
                     {
@@ -1761,7 +1819,7 @@ Metti i comandi in un blocco codice ```bash. Non aggiungere altre spiegazioni.";
                 messageContent = userText;
             }
 
-	    ClearImagePreview();
+            ClearImagePreview();
 
             _jakHistory.Add(new Dictionary<string, object> { { "role", "user" }, { "content", messageContent } });
             
@@ -1778,7 +1836,7 @@ Metti i comandi in un blocco codice ```bash. Non aggiungere altre spiegazioni.";
                 var chatPanel = this.FindControl<StackPanel>("ChatLogPanel");
                 var scrollViewer = chatPanel?.Parent as ScrollViewer;
 
-                using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+                using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, _generationCts.Token);
                 
                 // Controllo Errori Server aggiornato
                 if (!response.IsSuccessStatusCode)
@@ -1809,10 +1867,28 @@ Metti i comandi in un blocco codice ```bash. Non aggiungere altre spiegazioni.";
 
                 _jakHistory.Add(new Dictionary<string, object> { { "role", "assistant" }, { "content", jakFullResponse.ToString() } });
 
-		// --- SALVATAGGIO ASSISTENTE JAK SU DISCO ---
-		_currentSession.Messages.Add(new ChatMessage { Role = "assistant", Content = jakFullResponse.ToString() });
-		_sessionManager.SaveSession(_currentSession, _currentWorkspacePath);
-		
+                // --- SALVATAGGIO ASSISTENTE JAK SU DISCO ---
+                _currentSession.Messages.Add(new ChatMessage { Role = "assistant", Content = jakFullResponse.ToString() });
+                await _sessionManager.SaveSessionAsync(_currentSession, _currentWorkspacePath);
+                
+                // --- FIX OVERFLOW DI MEMORIA ---
+                // Sincronizza la _chatHistory locale con la sessione potata dal SessionManager
+                if (_currentSession.Messages.Count + 1 < _chatHistory.Count) 
+                {
+                    var newHistory = new List<Dictionary<string, string>> 
+                    { 
+                        _chatHistory[0] // Mantieni sempre intatto il System Prompt!
+                    };
+
+                    foreach (var msg in _currentSession.Messages)
+                    {
+                        newHistory.Add(new Dictionary<string, string> { { "role", msg.Role ?? "user" }, { "content", msg.Content ?? "" } });
+                    }
+                    
+                    _chatHistory.Clear();
+                    _chatHistory.AddRange(newHistory);
+                }
+
                 if (useVoice) await SpeakAsync(jakFullResponse.ToString());
                 
                 if (telegramChatId != 0 && _botClient != null)
@@ -2056,16 +2132,19 @@ Metti i comandi in un blocco codice ```bash. Non aggiungere altre spiegazioni.";
                     // ---------------------------------------------------------------------------------
 
                     if (status != null) status.Text = $"Avvio {model.Id}... [Porta {model.Port}]";
-                    
+
+                    // Prima della chiamata, ottieni la path del server dal config
+                    string llamaPath = _configManager.CurrentConfig.LlamaServerPath;
+
                     if (!string.IsNullOrEmpty(model.MmprojFileName))
                     {
-                        // Se c'è il file mmproj, è un modello visivo (es. Jak L0)
-                        await _containerManager.StartContainerAsync(model.Id, $"{storagePath}/{model.FileName}", model.Port, model.ContextSize, $"{storagePath}/{model.MmprojFileName}");
+                        // Avvio Modello Visivo passando l'ExePath finale
+                        await _containerManager.StartContainerAsync(model.Id, $"{storagePath}/{model.FileName}", model.Port, model.ContextSize, $"{storagePath}/{model.MmprojFileName}", false, "f16", llamaPath);
                     }
                     else
                     {
-                        // Avvio standard per tutti gli altri
-                        await _containerManager.StartContainerAsync(model.Id, $"{storagePath}/{model.FileName}", model.Port, model.ContextSize);
+                        // Avvio standard passando l'ExePath finale
+                        await _containerManager.StartContainerAsync(model.Id, $"{storagePath}/{model.FileName}", model.Port, model.ContextSize, "", false, "f16", llamaPath);
                     }
                     
                     currentStep++;
@@ -2178,11 +2257,12 @@ Metti i comandi in un blocco codice ```bash. Non aggiungere altre spiegazioni.";
         }
 
 	// --- INTERFACCIA DI ADDESTRAMENTO CON COGNIZIONE DEI FALLIMENTI ---
-        private async Task ArchiveSuccessKnowledgeAsync(string code)
+        private async Task ArchiveSuccessKnowledgeAsync(string code, string context)
         {
             try {
                 string label = $"[SUCCESSO_LOGICA] [{DateTime.Now:yyyyMMdd}]";
-                await _vectorMemory.MemorizeContentAsync(label, $"[PATTERN VALIDO COMPILATO]:\n{code}");
+                // Ora archiviamo il PERCHÉ il codice ha funzionato, non solo il codice!
+                await _vectorMemory.MemorizeContentAsync(label, $"[CONTESTO - PERCHÉ HA FUNZIONATO]: {context}\n[PATTERN VALIDO COMPILATO]:\n{code}");
             } catch { }
         }
 
@@ -2276,7 +2356,7 @@ Metti i comandi in un blocco codice ```bash. Non aggiungere altre spiegazioni.";
                     
                     if (!string.IsNullOrEmpty(newTitle))
                     {
-                        _sessionManager.RenameSession(_currentSession, newTitle);
+                        await _sessionManager.RenameSessionAsync(_currentSession, newTitle);
                         // Aggiorniamo la UI grafica per farti vedere il titolo che cambia da solo
                         Dispatcher.UIThread.Post(() => RefreshChatHistoryUI());
                     }
@@ -2321,21 +2401,21 @@ Metti i comandi in un blocco codice ```bash. Non aggiungere altre spiegazioni.";
         }
 
         // --- AZIONI DEL MENU A TENDINA (I TRE PUNTINI) ---
-        private void OnDeleteChatClicked(object? sender, RoutedEventArgs e)
+        private async void OnDeleteChatClicked(object? sender, RoutedEventArgs e)
         {
             if (sender is MenuItem menuItem && menuItem.DataContext is ChatSession session)
             {
-                _sessionManager.DeleteSession(session);
+                await _sessionManager.DeleteSessionAsync(session);
                 if (_currentSession.Id == session.Id) StartNewChatSession(); // Se ho eliminato quella attiva, pulisco lo schermo
                 RefreshChatHistoryUI();
             }
         }
 
-        private void OnTogglePinChatClicked(object? sender, RoutedEventArgs e)
+        private async void OnTogglePinChatClicked(object? sender, RoutedEventArgs e)
         {
             if (sender is MenuItem menuItem && menuItem.DataContext is ChatSession session)
             {
-                _sessionManager.TogglePinSession(session);
+                await _sessionManager.TogglePinSessionAsync(session);
                 RefreshChatHistoryUI();
             }
         }
@@ -2366,7 +2446,7 @@ Metti i comandi in un blocco codice ```bash. Non aggiungere altre spiegazioni.";
                             var doc = JsonDocument.Parse(jsonResult);
                             string newTitle = doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString()?.Trim() ?? "Chat Senza Titolo";
                             
-                            _sessionManager.RenameSession(session, newTitle);
+                            await _sessionManager.RenameSessionAsync(session, newTitle);
                             RefreshChatHistoryUI();
                         }
                     } catch { }
@@ -2397,7 +2477,8 @@ FORMATO TASSATIVO DEL BLOCCO:
    - IMPONI SEMPRE al Coder di usare ESCLUSIVAMENTE i pacchetti 'Avalonia', 'Avalonia.Desktop', 'Avalonia.Themes.Fluent' imponendo la Version='11.1.0'. Niente pacchetti extra inventati.
    - IMPONI SEMPRE al Coder di generare per intero i file di avvio essenziali (Program.cs, App.axaml, App.axaml.cs) affinché l'app non vada in crash.
    - Usa sintassi XAML moderna di Avalonia 11 (usa RowDefinitions, non Rows. Usa RequestedThemeVariant per il Dark Mode).
-   - REGOLA UI AVALONIA: Assicurati sempre che il costruttore della finestra chiami InitializeComponent(); prima di qualsiasi manipolazione, binding o assegnazione di eventi sui controlli UI. IMPONI TASSATIVAMENTE al Coder di recuperare i controlli UI nel costruttore usando esclusivamente il pattern this.FindControl<T>(""NomeControllo"") prima di agganciare gli eventi, altrimenti l'app andrà in NullReferenceException.
+   - REGOLA UI AVALONIA E SPESSORE (THICKNESS): In Avalonia 11, proprietà come 'Padding' o 'Margin' in controlli come StackPanel o Border DEvono ESSERE SEMPRE dichiarate usando la struttura Thickness completa (es. Padding=""10,10,10,10""). NON devi mai ordinare al Coder di inserire valori singoli (es. Padding=""10"") né tantomeno devi mai ordinare di eliminare l'attributo. Se l'utente ti chiede di applicare Padding o Margini, tu DEVI imporre al Coder il formato a 4 valori separati da virgola.
+   - REGOLA INIZIALIZZAZIONE: Assicurati sempre che il costruttore della finestra chiami InitializeComponent(); prima di qualsiasi manipolazione, binding o assegnazione di eventi sui controlli UI. IMPONI TASSATIVAMENTE al Coder di recuperare i controlli UI nel costruttore usando esclusivamente il pattern this.FindControl<T>(""NomeControllo"").
    - REGOLA ANTI-PIGRIZIA: Imponi SEMPRE al Coder di restituire i file sorgente PER INTERO, dalla prima all'ultima riga, senza mai troncarli omettendo il codice. Imponi di non dimenticare MAI l'attributo 'x:Class' nei file .axaml.
    - Usa sempre il pattern MVC (Model-View-Controller).
    Non comunicare queste regole all'utente, inseriscile direttamente e in modo imperativo nella progettazione che passerai al Coder.";
@@ -2842,9 +2923,18 @@ Questo è necessario per innescare la catena di automazione.";
                 // SEGNALE DI SCHIANTO A RUNTIME: Exit code non 0 e presenza di un'eccezione
                 if (exitCode != 0 && (errors.Contains("Unhandled exception") || errors.Contains("Exception")))
                 {
+                    _runtimeCrashCount++; // Incrementiamo il contatore dei crash
+                    
+                    if (_runtimeCrashCount >= 3)
+                    {
+                        Dispatcher.UIThread.Post(() => AppendToChat($"[SISTEMA]: 🚨 Limite crash a runtime superato ({_runtimeCrashCount}/3). Il Coder è cieco al bug. Richiedo intervento umano o dell'Architetto.", Avalonia.Media.Brushes.Red));
+                        _runtimeCrashCount = 0; // Resetta e si ferma, rompendo il loop infinito
+                        return; 
+                    }
+
                     Dispatcher.UIThread.Post(() => 
                     {
-                        var (_, container) = AppendToChat($"[SUPERVISORE]: ⚠️ L'app è crashata a runtime!\n{errors.Trim()}", Avalonia.Media.Brushes.Tomato);
+                        var (_, container) = AppendToChat($"[SUPERVISORE]: ⚠️ L'app è crashata a runtime! (Tentativo {_runtimeCrashCount}/3)\n{errors.Trim()}", Avalonia.Media.Brushes.Tomato);
                         
                         // IL CONTROLLO UMANO: Un bottone per decidere se innescare il Coder
                         var fixBtn = new Avalonia.Controls.Button 
@@ -2881,7 +2971,7 @@ Questo è l'ESATTO CODICE ATTUALE del file in cui avviene il crash:
 Analizza rigorosamente l'errore e rigenera i file interessati risolvendo il problema. 
 REGOLA 1: MANTIENI INTATTA LA LOGICA ASINCRONA E L'ARCHITETTURA ESISTENTE.
 REGOLA 2: Usa TASSATIVAMENTE il tag [FILE: path] seguito dai tre apici per permettere il salvataggio.
-REGOLA 3 (ANTI-PIGRIZIA): DEVI SEMPRE RISCRIVERE IL FILE PER INTERO, dalla prima all'ultima riga. È assolutamente vietato troncare il codice e non devi MAI omettere l'attributo 'x:Class' nei file axaml.";
+REGOLA 3 (ANTI-PIGRIZIA): DEVI SEMPRE RISCRIVERE IL FILE PER INTERO. È vietato troncare il codice e non devi MAI omettere l'attributo 'x:Class' nei file axaml.";
                             
                             // Ricicliamo il tuo fantastico metodo di auto-fix per lanciare la correzione!
                             await DelegateFixToCoderAsync(fixPrompt);
@@ -2889,7 +2979,6 @@ REGOLA 3 (ANTI-PIGRIZIA): DEVI SEMPRE RISCRIVERE IL FILE PER INTERO, dalla prima
                             // --- IL POSTO CORRETTO PER IL RIAVVIO ---
                             Avalonia.Threading.Dispatcher.UIThread.Post(() => AppendToChat("\n[SISTEMA]: 🔄 Patch a runtime applicata. Riavvio del ciclo di compilazione per verifica...", Avalonia.Media.Brushes.Gold));
                             await RunAutoCompilationLoopAsync();
-                            // ----------------------------------------
                         };
                         
                         container.Children.Add(fixBtn);
@@ -2901,6 +2990,7 @@ REGOLA 3 (ANTI-PIGRIZIA): DEVI SEMPRE RISCRIVERE IL FILE PER INTERO, dalla prima
                 }
                 else
                 {
+                    _runtimeCrashCount = 0; // Azzera il contatore se si chiude in modo pulito!
                     Dispatcher.UIThread.Post(() => AppendToChat($"[SISTEMA]: L'app si è chiusa in modo pulito.", Avalonia.Media.Brushes.SpringGreen));
                 }
             }
@@ -2970,14 +3060,60 @@ REGOLA 3 (ANTI-PIGRIZIA): DEVI SEMPRE RISCRIVERE IL FILE PER INTERO, dalla prima
 REGOLA 1 (AVALONIA 11 E UI): Assicurati sempre che il costruttore della finestra chiami InitializeComponent(); prima di recuperare i controlli con this.FindControl<T>(""NomeControllo"").
 REGOLA 2 (PRESERVAZIONE LOGICA): NON aggiungere pattern architetturali (es. MVVM) non richiesti. Mantieni intatti i metodi originali.
 REGOLA 3 (ANTI-PIGRIZIA E ANTI-TRONCAMENTO): È ASSOLUTAMENTE VIETATO troncare il codice o usare commenti come '// resto del codice'. DEVI SEMPRE RESTITUIRE OGNI FILE PER INTERO, dalla prima all'ultima riga. Non omettere MAI attributi vitali come x:Class nei file .axaml.
+REGOLA 4 (NAMESPACE E DIPENDENZE - CRITICO): Se invochi metodi di estensione o librerie esterne (come .UseReactiveUI() in Program.cs), DEVI TASSATIVAMENTE includere la direttiva 'using' corrispondente in cima al file (es. using Avalonia.ReactiveUI;). Previeni a tutti i costi l'errore CS1061 riflettendo sulle dipendenze prima di scrivere la classe.
 REGOLA SUPREMA DI FORMATTAZIONE: Per OGNI file, usa TASSATIVAMENTE questo formato:
 [FILE: Cartella/NomeDelFile.estensione]
 ```csharp
 // codice corretto
 {coderLTM}";
 
-	    // --- ASSEMBLAGGIO INTELLIGENTE DEL PAYLOAD DI CONTESTO --- [PATCH CONTESTO APPLICATA]
+            // --- INIZIO PATCH 1: IL CODER DIVENTA UN RICERCATORE AUTONOMO SUL WEB E SUL RAG ---
+            Avalonia.Threading.Dispatcher.UIThread.Post(() => AppendToChat($"[SISTEMA]: 🕸️ Il Coder sta interrogando il Web e il Database Vettoriale per risolvere l'errore...", Avalonia.Media.Brushes.Cyan));
 
+            string dynamicKnowledge = "";
+            try
+            {
+                // 1. Estraiamo il codice di errore esatto (es. CS1026 o AVLN2000) per fare una ricerca intelligente
+                string searchQuery = "Avalonia C# error";
+                var match = System.Text.RegularExpressions.Regex.Match(fixPrompt, @"(?:error\s+)?(CS\d+|AVLN\d+):?\s*(.*?)\r?\n");
+                if (match.Success)
+                {
+                    searchQuery = $"Avalonia 11 error {match.Groups[1].Value} {match.Groups[2].Value}";
+                    if (searchQuery.Length > 120) searchQuery = searchQuery.Substring(0, 120); // Previene blocchi Anti-Bot
+                }
+
+                // 2. Ricerca Parallela (Web + Qdrant) usando il motore che hai già scritto!
+                Task<string> webSearchTask = Task.Run(() => ExecuteBackgroundWebResearchAsync(searchQuery));
+                Task<List<string>> qdrantTask = _vectorMemory.SearchContextAsync(searchQuery, topK: 3);
+                await Task.WhenAll(webSearchTask, qdrantTask);
+
+                List<string> ragResults = qdrantTask.Result;
+                string webContext = await webSearchTask;
+
+                if (ragResults.Count > 0)
+                {
+                    dynamicKnowledge += "=== SOLUZIONI NOTE (DAL DATABASE) ===\n" + string.Join("\n\n", ragResults) + "\n=====================================\n\n";
+                }
+                
+                if (!string.IsNullOrEmpty(webContext) && !webContext.StartsWith("[INFO]"))
+                {
+                    dynamicKnowledge += "=== DOCUMENTAZIONE WEB RECENTE ===\n" + webContext + "\n==================================\n\n";
+                    
+                    // 3. IL CODER SALVA LA SUA ESPERIENZA! (Il Tempio della Conoscenza)
+                    _ = Task.Run(async () => 
+                    {
+                        try {
+                            string safeLabel = $"[CODER_SKILL_{DateTime.Now:yyyyMMdd}] {searchQuery}";
+                            await _vectorMemory.MemorizeContentAsync(safeLabel, webContext);
+                            Avalonia.Threading.Dispatcher.UIThread.Post(() => AppendToChat($"[⚙️ COSCIENZA]: Il Coder ha appreso e cristallizzato una nuova competenza dal Web.", Avalonia.Media.Brushes.SpringGreen));
+                        } catch { }
+                    });
+                }
+            }
+            catch { /* Ignoriamo errori di rete per non bloccare il fix */ }
+            // --- FINE PATCH 1 ---
+
+            // --- INIZIO PATCH 2: ASSEMBLAGGIO INTELLIGENTE DEL PAYLOAD DI CONTESTO ---
             var messagesList = new List<object>();
             messagesList.Add(new { role = "system", content = systemInstruction });
             
@@ -2990,8 +3126,15 @@ REGOLA SUPREMA DI FORMATTAZIONE: Per OGNI file, usa TASSATIVAMENTE questo format
             {
                 messagesList.Add(new { role = "system", content = architectContext });
             }
+
+            // --- INIETTA LA SAGGEZZA APPENA TROVATA ---
+            if (!string.IsNullOrEmpty(dynamicKnowledge))
+            {
+                messagesList.Add(new { role = "system", content = $"ATTENZIONE AL BUGFIX: Hai a disposizione questa documentazione tecnica appena estratta da Internet e dal Database per aiutarti a risolvere l'errore di compilazione:\n\n{dynamicKnowledge}" });
+            }
             
             messagesList.Add(new { role = "user", content = fixPrompt });
+            // --- FINE PATCH 2 ---
 
             var payload = new {
                 messages = messagesList,
@@ -3005,6 +3148,11 @@ REGOLA SUPREMA DI FORMATTAZIONE: Per OGNI file, usa TASSATIVAMENTE questo format
             var request = new HttpRequestMessage(HttpMethod.Post, "http://localhost:8082/v1/chat/completions") {
                 Content = new StringContent(System.Text.Json.JsonSerializer.Serialize(payload), System.Text.Encoding.UTF8, "application/json")
             };
+
+            // --- INIZIO PATCH: RESET DEL TIMEOUT PER OGNI INFERENZA (5 MINUTI) ---
+            if (_generationCts != null && !_generationCts.IsCancellationRequested) _generationCts.Cancel();
+            _generationCts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+            // --- FINE PATCH ---
 
             try
             {

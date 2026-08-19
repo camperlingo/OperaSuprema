@@ -153,6 +153,16 @@ namespace OperaSuprema.Core
             return list.ToArray();
         }
 
+        // --- PATCH QDRANT: GUID DETERMINISTICO PER EVITARE DUPLICATI ---
+        private string CreateDeterministicGuid(string input)
+        {
+            using (var md5 = System.Security.Cryptography.MD5.Create())
+            {
+                byte[] hash = md5.ComputeHash(System.Text.Encoding.UTF8.GetBytes(input));
+                return new Guid(hash).ToString();
+            }
+        }
+
         public async Task MemorizeContentAsync(string filePath, string content)
         {
             await EnsureCollectionExistsAsync();
@@ -166,7 +176,10 @@ namespace OperaSuprema.Core
             {
                 // Otteniamo l'embedding solo per questo frammento
                 float[] vector = await GetEmbeddingAsync(chunk, false);
-                string pointId = Guid.NewGuid().ToString();
+
+                // --- PATCH APPLICATA: Generazione ID univoco ma prevedibile ---
+                string uniqueString = $"{filePath}_chunk_{chunkIndex}";
+                string pointId = CreateDeterministicGuid(uniqueString);
 
                 var payload = new
                 {
@@ -174,13 +187,13 @@ namespace OperaSuprema.Core
                     {
                         new
                         {
-                            id = pointId,
+                            id = pointId, // Usa l'ID deterministico
                             vector = vector,
                             payload = new
                             {
                                 path = filePath,
                                 chunk_index = chunkIndex, // Salviamo l'indice del frammento
-                                code_snippet = chunk, // Memorizziamo solo il frammento, non tutto il file
+                                code_snippet = chunk,     // Memorizziamo solo il frammento, non tutto il file
                                 timestamp = DateTime.UtcNow.Ticks
                             }
                         }

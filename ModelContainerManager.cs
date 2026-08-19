@@ -13,7 +13,8 @@ namespace OperaSuprema.Core
 
         private bool _isShuttingDown = false;
 
-        public async Task StartContainerAsync(string roleName, string modelPath, int port, int contextSize = 8192, string mmprojPath = "", bool useFlashAttention = false, string kvCacheType = "f16")
+        // Modifica la firma per ricevere il path
+        public async Task StartContainerAsync(string roleName, string modelPath, int port, int contextSize = 8192, string mmprojPath = "", bool useFlashAttention = false, string kvCacheType = "f16", string llamaExePath = "llama-server")
         {
             if (_activeContainers.ContainsKey(roleName))
             {
@@ -31,7 +32,7 @@ namespace OperaSuprema.Core
                 // Base universale per tutti i modelli
                 string args = $"-m \"{modelPath}\" -c {contextSize} -b 2048 -ub 2048 --port {port}";
                 args += " --parallel 2 --n-gpu-layers 999";
-		
+        
                 if (useFlashAttention) args += " -fa on";
                 args += $" -ctk {kvCacheType} -ctv {kvCacheType}"; 
 
@@ -43,13 +44,15 @@ namespace OperaSuprema.Core
                     Console.WriteLine($"[VISION] Proiettore agganciato: {mmprojPath}");
                 }
 
-                ProcessStartInfo psi = new ProcessStartInfo
+                // Cerca poco più giù dove si inizializza il ProcessStartInfo e sostituiscilo così:
+                System.Diagnostics.ProcessStartInfo psi = new System.Diagnostics.ProcessStartInfo
                 {
-                    FileName = "/home/spiderman/ai_models/llama.cpp/build/bin/llama-server",
-                    Arguments = args,
-                    RedirectStandardOutput = false,
-                    RedirectStandardError = true, 
+                    // Usiamo il path custom se passato, altrimenti fallback sul comando di sistema 'llama-server'
+                    FileName = string.IsNullOrWhiteSpace(llamaExePath) ? "llama-server" : llamaExePath,
+                    Arguments = args, // il resto della configurazione rimane identica a come ce l'avevi
                     UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
                     CreateNoWindow = true
                 };
 
@@ -91,7 +94,7 @@ namespace OperaSuprema.Core
                         Console.WriteLine($"[RECOVERY] Ripristino {roleName}...");
                         try
                         {
-                            await StartContainerAsync(roleName, modelPath, port, contextSize, mmprojPath, useFlashAttention, kvCacheType);
+                            await StartContainerAsync(roleName, modelPath, port, contextSize, mmprojPath, useFlashAttention, kvCacheType, llamaExePath);
                         }
                         catch (Exception ex)
                         {
