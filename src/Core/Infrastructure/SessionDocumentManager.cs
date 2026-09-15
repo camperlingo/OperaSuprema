@@ -70,7 +70,7 @@ namespace OperaSuprema.Core.Infrastructure
             }
         }
 
-        private long GetAvailableRamMB()
+        public long GetAvailableRamMB()
         {
             try
             {
@@ -219,8 +219,8 @@ namespace OperaSuprema.Core.Infrastructure
                                 logCallback($"[FALDONE]: Ingestione lotto {currentBatch}/{totalBatches} completata (Pagine {startPage}-{endPage}).");
 
                                 batchText = null;
-                                GC.Collect(2, GCCollectionMode.Forced, true, true);
-                                GC.WaitForPendingFinalizers();
+                                System.Runtime.GCSettings.LargeObjectHeapCompactionMode = System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce;
+                                GC.Collect(2, GCCollectionMode.Optimized, false, false);
                             }
                             
                             logCallback($"[FALDONE]: Ingestione massiva conclusa con successo.");
@@ -285,8 +285,8 @@ namespace OperaSuprema.Core.Infrastructure
                                             sb.Clear();
                                             batchCounter++;
                                             
-                                            GC.Collect(2, GCCollectionMode.Forced, true, true);
-                                            GC.WaitForPendingFinalizers();
+                                            System.Runtime.GCSettings.LargeObjectHeapCompactionMode = System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce;
+                                            GC.Collect(2, GCCollectionMode.Optimized, false, false);
                                         }
                                     }
                                     
@@ -371,8 +371,8 @@ namespace OperaSuprema.Core.Infrastructure
                                 sb.Clear();
                                 batchCounter++;
 
-                                GC.Collect(2, GCCollectionMode.Forced, true, true);
-                                GC.WaitForPendingFinalizers();
+                                System.Runtime.GCSettings.LargeObjectHeapCompactionMode = System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce;
+                                GC.Collect(2, GCCollectionMode.Optimized, false, false);
                             }
                         }
                         logCallback($"[FALDONE]: Ingestione massiva testuale conclusa con successo.");
@@ -462,6 +462,147 @@ namespace OperaSuprema.Core.Infrastructure
             return results;
         }
 
+        public async Task<long> GetSessionChunkCountAsync(string chatId, CancellationToken ct = default)
+        {
+            await EnsureCollectionExistsAsync();
+            try
+            {
+                var payload = new
+                {
+                    filter = new
+                    {
+                        must = new[]
+                        {
+                            new { key = "chat_id", match = new { value = chatId } }
+                        }
+                    },
+                    exact = true
+                };
+
+                var requestContent = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+                var response = await _httpClient.PostAsync($"{QdrantBaseUrl}/collections/{CollectionName}/points/count", requestContent, ct);
+                
+                if (response.IsSuccessStatusCode)
+                {
+                    string jsonResponse = await response.Content.ReadAsStringAsync();
+                    using (var doc = JsonDocument.Parse(jsonResponse))
+                    {
+                        if (doc.RootElement.TryGetProperty("result", out var resultObj) && 
+                            resultObj.TryGetProperty("count", out var countEl))
+                        {
+                            return countEl.GetInt64();
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[QDRANT DOCS ERRORE] Errore conteggio: {ex.Message}");
+            }
+            return 0;
+        }
+
+        public async Task<List<string>> GetAllSessionChunksAsync(string chatId, CancellationToken ct = default)
+        {
+            var results = new List<string>();
+            await EnsureCollectionExistsAsync();
+
+            try
+            {
+                object? offset = null;
+                bool hasMore = true;
+
+                while (hasMore)
+                {
+                    ct.ThrowIfCancellationRequested();
+
+                    var payload = new Dictionary<string, object>
+                    {
+                        { "limit", 100 },
+                        { "with_payload", true },
+                        { "with_vector", false },
+                        { "filter", new
+                            {
+                                must = new[]
+                                {
+                                    new { key = "chat_id", match = new { value = chatId } }
+                                }
+                            }
+                        }
+                    };
+
+                    if (offset != null)
+                    {
+                        payload["offset"] = offset;
+                    }
+
+                    var requestContent = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+                    var response = await _httpClient.PostAsync($"{QdrantBaseUrl}/collections/{CollectionName}/points/scroll", requestContent, ct);
+
+                    if (response.IsSuccessStatusCode)
+                    {
+                        string jsonResponse = await response.Content.ReadAsStringAsync();
+                        using (var doc = JsonDocument.Parse(jsonResponse))
+                        {
+                            if (doc.RootElement.TryGetProperty("result", out var resultObj))
+                            {
+                                if (resultObj.TryGetProperty("points", out var pointsList))
+                                {
+                                    var batchResults = new List<(int index, string content)>();
+
+                                    foreach (var item in pointsList.EnumerateArray())
+                                    {
+                                        if (item.TryGetProperty("payload", out var pld) && 
+                                            pld.TryGetProperty("content", out var contentElement) &&
+                                            pld.TryGetProperty("chunk_index", out var indexElement))
+                                        {
+                                            batchResults.Add((indexElement.GetInt32(), contentElement.GetString() ?? ""));
+                                        }
+                                    }
+
+                                    foreach (var r in batchResults.OrderBy(x => x.index))
+                                    {
+                                        results.Add(r.content);
+                                    }
+                                }
+
+                                if (resultObj.TryGetProperty("next_page_offset", out var nextOffsetEl) && nextOffsetEl.ValueKind != JsonValueKind.Null)
+                                {
+                                    if (nextOffsetEl.ValueKind == JsonValueKind.String)
+                                        offset = nextOffsetEl.GetString();
+                                    else if (nextOffsetEl.ValueKind == JsonValueKind.Number)
+                                        offset = nextOffsetEl.GetInt64();
+                                    else
+                                        offset = nextOffsetEl.ToString();
+                                        
+                                    if (string.IsNullOrEmpty(offset?.ToString()))
+                                        hasMore = false;
+                                }
+                                else
+                                {
+                                    hasMore = false;
+                                }
+                            }
+                            else
+                            {
+                                hasMore = false;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        hasMore = false;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[QDRANT DOCS ERRORE] Errore estrazione totale: {ex.Message}");
+            }
+
+            return results;
+        }
+
         public async Task DeleteSessionDocsAsync(string chatId)
         {
             try
@@ -496,6 +637,98 @@ namespace OperaSuprema.Core.Infrastructure
             {
                 Console.WriteLine($"[QDRANT DOCS ERRORE] Eliminazione documenti fallita: {ex.Message}");
             }
+        }
+
+        public async Task<List<string>> GetSessionDocumentNamesAsync(string chatId, CancellationToken ct = default)
+        {
+            var results = new HashSet<string>();
+            await EnsureCollectionExistsAsync();
+
+            try
+            {
+                object? offset = null;
+                bool hasMore = true;
+
+                while (hasMore)
+                {
+                    ct.ThrowIfCancellationRequested();
+
+                    var payload = new Dictionary<string, object>
+                    {
+                        { "limit", 100 },
+                        { "with_payload", true },
+                        { "with_vector", false },
+                        { "filter", new
+                            {
+                                must = new[]
+                                {
+                                    new { key = "chat_id", match = new { value = chatId } }
+                                }
+                            }
+                        }
+                    };
+
+                    if (offset != null)
+                    {
+                        payload["offset"] = offset;
+                    }
+
+                    var requestContent = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+                    var response = await _httpClient.PostAsync($"{QdrantBaseUrl}/collections/{CollectionName}/points/scroll", requestContent, ct);
+
+                    if (response.IsSuccessStatusCode)
+                    {
+                        string jsonResponse = await response.Content.ReadAsStringAsync();
+                        using (var doc = JsonDocument.Parse(jsonResponse))
+                        {
+                            if (doc.RootElement.TryGetProperty("result", out var resultObj))
+                            {
+                                if (resultObj.TryGetProperty("points", out var pointsList))
+                                {
+                                    foreach (var item in pointsList.EnumerateArray())
+                                    {
+                                        if (item.TryGetProperty("payload", out var pld) && 
+                                            pld.TryGetProperty("file_name", out var fileNameElement))
+                                        {
+                                            results.Add(fileNameElement.GetString() ?? "");
+                                        }
+                                    }
+                                }
+
+                                if (resultObj.TryGetProperty("next_page_offset", out var nextOffsetEl) && nextOffsetEl.ValueKind != JsonValueKind.Null)
+                                {
+                                    if (nextOffsetEl.ValueKind == JsonValueKind.String)
+                                        offset = nextOffsetEl.GetString();
+                                    else if (nextOffsetEl.ValueKind == JsonValueKind.Number)
+                                        offset = nextOffsetEl.GetInt64();
+                                    else
+                                        offset = nextOffsetEl.ToString();
+                                        
+                                    if (string.IsNullOrEmpty(offset?.ToString()))
+                                        hasMore = false;
+                                }
+                                else
+                                {
+                                    hasMore = false;
+                                }
+                            }
+                            else
+                            {
+                                hasMore = false;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        hasMore = false;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[QDRANT DOCS ERRORE] Errore estrazione nomi file: {ex.Message}");
+            }
+            return results.ToList();
         }
     }
 }

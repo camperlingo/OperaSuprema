@@ -94,9 +94,6 @@ namespace OperaSuprema.GUI
             var btnEstrai = this.FindControl<Button>("BtnDocEstrai");
             if (btnEstrai != null) btnEstrai.Click += (s, e) => { UserInputTextBox.Text = "Estrai tutti i dati numerici, contabili o cronologici organizzandoli in tabelle Markdown."; OnSendButtonClicked(null, null); };
 
-            var btnExportDossier = this.FindControl<Button>("BtnExportDossier");
-            if (btnExportDossier != null) btnExportDossier.Click += OnExportDossierClicked;
-
 	    // Aggancio bottone Blueprint
             var btnBlueprint = this.FindControl<Button>("OpenBlueprintButton");
             if (btnBlueprint != null)
@@ -431,47 +428,6 @@ namespace OperaSuprema.GUI
         {
             var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions { Title = "Seleziona la cartella del progetto", AllowMultiple = false });
             if (folders.Count > 0) LoadWorkspace(folders[0].Path.LocalPath);
-        }
-
-        private async void OnExportDossierClicked(object? sender, RoutedEventArgs e)
-        {
-            var btn = sender as Button;
-            if (btn != null) btn.IsEnabled = false;
-
-            try
-            {
-                var topLevel = Avalonia.Controls.TopLevel.GetTopLevel(this);
-                if (topLevel == null) return;
-
-                var file = await topLevel.StorageProvider.SaveFilePickerAsync(new Avalonia.Platform.Storage.FilePickerSaveOptions
-                {
-                    Title = "Esporta Dossier di Sessione",
-                    SuggestedFileName = $"Dossier_{_currentSession.Title.Replace(" ", "_")}_{DateTime.Now:yyyyMMdd}.md",
-                    DefaultExtension = "md",
-                    FileTypeChoices = new[]
-                    {
-                        new Avalonia.Platform.Storage.FilePickerFileType("Markdown") { Patterns = new[] { "*.md" } }
-                    }
-                });
-
-                if (file != null)
-                {
-                    await using var stream = await file.OpenWriteAsync();
-                    using var writer = new StreamWriter(stream, Encoding.UTF8);
-                    
-                    await SessionDossierExporter.ExportDossierToStreamAsync(writer, _currentSession, _ledgerService, _sessionDocManager);
-
-                    AppendToChat($"[SISTEMA]: 📄 Dossier di Sessione esportato con successo in '{file.Name}'.", Brushes.MediumSeaGreen);
-                }
-            }
-            catch (Exception ex)
-            {
-                AppendToChat($"[ERRORE EXPORT]: {ex.Message}", Brushes.Red);
-            }
-            finally
-            {
-                if (btn != null) btn.IsEnabled = true;
-            }
         }
 
         private void LoadWorkspace(string path)
@@ -2444,30 +2400,6 @@ Metti i comandi in un blocco codice ```bash. Non aggiungere altre spiegazioni.";
 	// =========================================================================
         // MOTORE UI DELLA MEMORIA STORICA (SPLITVIEW & SESSIONI)
         // =========================================================================
-
-        private void OnLensToggled(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
-        {
-            var activeToggle = sender as Avalonia.Controls.Primitives.ToggleButton;
-            if (activeToggle == null) return;
-
-            var lensSintesi = this.FindControl<Avalonia.Controls.Primitives.ToggleButton>("LensSintesi");
-            var lensAnalisi = this.FindControl<Avalonia.Controls.Primitives.ToggleButton>("LensAnalisi");
-            var lensEstrai = this.FindControl<Avalonia.Controls.Primitives.ToggleButton>("LensEstrai");
-
-            if (activeToggle != lensSintesi && lensSintesi != null) lensSintesi.IsChecked = false;
-            if (activeToggle != lensAnalisi && lensAnalisi != null) lensAnalisi.IsChecked = false;
-            if (activeToggle != lensEstrai && lensEstrai != null) lensEstrai.IsChecked = false;
-
-            if (activeToggle.IsChecked == true)
-            {
-                var txtInput = this.FindControl<Avalonia.Controls.TextBox>("UserInputTextBox");
-                if (txtInput != null && string.IsNullOrWhiteSpace(txtInput.Text))
-                {
-                    txtInput.Text = $"Esegui: {activeToggle.Content}";
-                    OnSendButtonClicked(null, null);
-                }
-            }
-        }
 
         private void InitializeSidebarEvents()
         {

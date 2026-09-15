@@ -102,11 +102,13 @@
                     <Grid Grid.Column="1" RowDefinitions="Auto, *, Auto" Margin="20">
                         <Border Grid.Row="0" Background="#252526" CornerRadius="8" Padding="15" Margin="0,0,0,15" BorderBrush="#3F3F46" BorderThickness="1">
                             <Grid ColumnDefinitions="*, Auto">
-                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10">
                                     <TextBlock Text="🧠" FontSize="20"/>
                                     <TextBlock Text="Master Mentor (Gemma 3 27B)" FontSize="16" FontWeight="Bold" VerticalAlignment="Center"/>
                                     <TextBlock Name="ShadowMentorStatus" Text="(In consultazione con Shadow Mentor...)" Foreground="#D97706" FontStyle="Italic" VerticalAlignment="Center" Margin="10,0,0,0" IsVisible="False"/>
                                 </StackPanel>
+                                
+                                <Button Grid.Column="1" Name="BtnExportDossier" Content="📄 Esporta Dossier" Background="#333337" Foreground="White" CornerRadius="4" Padding="10,5" Cursor="Hand" FontWeight="SemiBold"/>
                             </Grid>
                         </Border>
 
@@ -117,6 +119,13 @@
                         </ScrollViewer>
 
                         <StackPanel Grid.Row="2" Spacing="10">
+                            <!-- LENTI ANALITICHE -->
+                            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Left" Margin="5,0,0,0">
+                                <ToggleButton Name="LensSintesi" Content="📝 Sintesi" Background="#333337" Foreground="White" FontSize="11" CornerRadius="16" Padding="12,6" Click="OnLensToggled"/>
+                                <ToggleButton Name="LensAnalisi" Content="⚖️ Analisi Legale" Background="#333337" Foreground="White" FontSize="11" CornerRadius="16" Padding="12,6" Click="OnLensToggled"/>
+                                <ToggleButton Name="LensEstrai" Content="📊 Estrai Dati" Background="#333337" Foreground="White" FontSize="11" CornerRadius="16" Padding="12,6" Click="OnLensToggled"/>
+                            </StackPanel>
+
                             <Border Name="ImagePreviewContainer" Background="#333337" CornerRadius="8" Padding="10" IsVisible="False" HorizontalAlignment="Left" BorderBrush="#007ACC" BorderThickness="1">
                                 <StackPanel Orientation="Horizontal" Spacing="10">
                                     <Image Name="AttachedImagePreview" MaxWidth="60" MaxHeight="60" Margin="0,0,10,0" Stretch="Uniform" />
@@ -148,7 +157,7 @@
                     </Grid>
 
                     <Border Grid.Column="2" Background="#1E1E1E" BorderBrush="#3F3F46" BorderThickness="1,0,0,0">
-                        <Grid RowDefinitions="Auto, Auto, *">
+                        <Grid RowDefinitions="Auto, Auto, Auto, *">
                             <Border Grid.Row="0" Background="#252526" BorderBrush="#3F3F46" BorderThickness="0,0,0,1" Padding="15">
                                 <StackPanel Spacing="15">
                                     <TextBlock Text="⚙️ STATO PRODUZIONE (AUTONOMA)" FontWeight="Black" FontSize="14" Foreground="#D97706" LetterSpacing="1"/>
@@ -178,35 +187,71 @@
                                 </StackPanel>
                             </Border>
 
-                            <!-- NUOVA SEZIONE: FALDONE DOCUMENTI SESSIONE -->
-                            <Border Grid.Row="1" Margin="0" Padding="15" BorderBrush="#3F3F46" BorderThickness="0,0,0,1">
+                            <!-- PANNELLO TELEMETRIA E VRAM -->
+                            <Border Grid.Row="1" Background="#252526" BorderBrush="#3F3F46" BorderThickness="0,0,0,1" Padding="15">
                                 <StackPanel Spacing="10">
-                                    <TextBlock Text="📂 FALDONE DOCUMENTI SESSIONE" Foreground="#007ACC" FontWeight="Bold" FontSize="14" LetterSpacing="1"/>
+                                    <TextBlock Text="📊 TELEMETRIA SISTEMA &amp; VRAM" FontWeight="Black" FontSize="14" Foreground="#4EC9B0" LetterSpacing="1"/>
                                     
-                                    <StackPanel Name="BatchProgressPanel" IsVisible="False" Spacing="5" Margin="0,5,0,5">
-                                        <TextBlock Name="BatchProgressText" Text="Elaborazione lotto..." Foreground="#D97706" FontSize="11"/>
-                                        <ProgressBar Name="BatchProgressBar" Minimum="0" Maximum="100" Height="4" Foreground="#D97706" Background="#333337"/>
+                                    <StackPanel Spacing="5">
+                                        <TextBlock Name="TxtRamUsage" Text="RAM Libera: -- GB / -- GB" FontSize="11" Foreground="#A0A0A0"/>
+                                        <ProgressBar Name="BarRamUsage" Minimum="0" Maximum="100" Value="0" Height="6" Foreground="#4EC9B0" Background="#333337"/>
                                     </StackPanel>
-
-                                    <Border Name="SessionDocsDropZone" Height="80" Background="#252526" BorderBrush="#007ACC" BorderThickness="1" CornerRadius="6" DragDrop.AllowDrop="True">
-                                        <Button Name="AttachDocumentButton" Content="📄 Allega Documento (PDF/DOCX/TXT)" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Background="Transparent" Foreground="#A0A0A0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Cursor="Hand"/>
-                                    </Border>
                                     
-                                    <ListBox Name="SessionDocsList" MaxHeight="120" Background="#1E1E1E" Foreground="#CCCCCC" CornerRadius="4">
-                                        <!-- Gli item verranno popolati via code-behind -->
-                                    </ListBox>
-                                    
-                                    <StackPanel Orientation="Horizontal" Spacing="5" HorizontalAlignment="Center">
-                                        <Button Name="BtnDocSintesi" Content="📝 Sintesi" Background="#333337" Foreground="White" FontSize="11" CornerRadius="4" Cursor="Hand"/>
-                                        <Button Name="BtnDocAnalisi" Content="⚖️ Analisi Legale" Background="#333337" Foreground="White" FontSize="11" CornerRadius="4" Cursor="Hand"/>
-                                        <Button Name="BtnDocEstrai" Content="📊 Estrai Dati" Background="#333337" Foreground="White" FontSize="11" CornerRadius="4" Cursor="Hand"/>
-                                    </StackPanel>
+                                    <TextBlock Text="Stato Servizi Neurali:" FontSize="11" Foreground="#858585" Margin="0,5,0,0"/>
+                                    <Grid ColumnDefinitions="*, *" RowDefinitions="Auto, Auto, Auto">
+                                        <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" Spacing="5" Margin="0,2">
+                                            <TextBlock Text="⚫" Name="LedMasterMentor" FontSize="10" VerticalAlignment="Center"/>
+                                            <TextBlock Text="Master Mentor" FontSize="11" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Spacing="5" Margin="0,2">
+                                            <TextBlock Text="⚫" Name="LedCoderNode" FontSize="10" VerticalAlignment="Center"/>
+                                            <TextBlock Text="Coder (30B)" FontSize="11" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Row="1" Grid.Column="0" Orientation="Horizontal" Spacing="5" Margin="0,2">
+                                            <TextBlock Text="⚫" Name="LedVision" FontSize="10" VerticalAlignment="Center"/>
+                                            <TextBlock Text="VisionJak" FontSize="11" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Spacing="5" Margin="0,2">
+                                            <TextBlock Text="⚫" Name="LedAudio" FontSize="10" VerticalAlignment="Center"/>
+                                            <TextBlock Text="AudioAnalyzer" FontSize="11" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Row="2" Grid.Column="0" Orientation="Horizontal" Spacing="5" Margin="0,2">
+                                            <TextBlock Text="⚫" Name="LedEmbed" FontSize="10" VerticalAlignment="Center"/>
+                                            <TextBlock Text="Embedding" FontSize="11" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Spacing="5" Margin="0,2">
+                                            <TextBlock Text="⚫" Name="LedQdrant" FontSize="10" VerticalAlignment="Center"/>
+                                            <TextBlock Name="TxtQdrant" Text="Qdrant (-- vettori)" FontSize="11" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Grid>
                                 </StackPanel>
                             </Border>
 
-                            <ScrollViewer Grid.Row="2" Margin="15">
-                                <StackPanel Name="PipelineLogPanel" Spacing="10">
-                                    <TextBlock Text="> Sistemi pronti. 112GB VRAM Allocata." Foreground="#4EC9B0" FontFamily="Consolas" FontSize="12"/>
+                            <!-- ATLANTE DELLA CONOSCENZA SPECIALISTICA -->
+                            <Border Grid.Row="2" Margin="0" Padding="15" BorderBrush="#3F3F46" BorderThickness="0,0,0,1">
+                                <StackPanel Spacing="10">
+                                    <TextBlock Text="📚 ATLANTE DELLA CONOSCENZA" Foreground="#007ACC" FontWeight="Bold" FontSize="14" LetterSpacing="1"/>
+                                    
+                                    <Button Name="BtnImportAtlas" Content="📖 Importa Corpus Globale" Background="#007ACC" Foreground="White" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" CornerRadius="5" Padding="10" Cursor="Hand"/>
+                                    
+                                    <TreeView Name="AtlasTreeView" MaxHeight="200" Background="#1E1E1E" Foreground="#CCCCCC" CornerRadius="4">
+                                        <!-- Gli item verranno popolati via code-behind -->
+                                    </TreeView>
+                                    
+                                    <Button Name="BtnPruneAtlas" Content="🗑️ Pruning / Elimina Disciplina" Background="#D32F2F" Foreground="White" FontSize="11" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" CornerRadius="4" Cursor="Hand"/>
+                                </StackPanel>
+                            </Border>
+
+                            <ScrollViewer Grid.Row="3" Margin="15">
+                                <StackPanel Spacing="10">
+                                    <StackPanel Name="BatchProgressPanel" IsVisible="False" Spacing="5" Margin="0,0,0,10">
+                                        <TextBlock Name="BatchProgressText" Text="Elaborazione lotto..." Foreground="#D97706" FontSize="11"/>
+                                        <ProgressBar Name="BatchProgressBar" Minimum="0" Maximum="100" Height="4" Foreground="#D97706" Background="#333337"/>
+                                    </StackPanel>
+                                    
+                                    <StackPanel Name="PipelineLogPanel" Spacing="10">
+                                        <TextBlock Text="> Sistemi pronti. 112GB VRAM Allocata." Foreground="#4EC9B0" FontFamily="Consolas" FontSize="12"/>
+                                    </StackPanel>
                                 </StackPanel>
                             </ScrollViewer>
                         </Grid>
