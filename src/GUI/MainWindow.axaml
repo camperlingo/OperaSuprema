@@ -183,6 +183,11 @@
                                 <StackPanel Spacing="10">
                                     <TextBlock Text="📂 FALDONE DOCUMENTI SESSIONE" Foreground="#007ACC" FontWeight="Bold" FontSize="14" LetterSpacing="1"/>
                                     
+                                    <StackPanel Name="BatchProgressPanel" IsVisible="False" Spacing="5" Margin="0,5,0,5">
+                                        <TextBlock Name="BatchProgressText" Text="Elaborazione lotto..." Foreground="#D97706" FontSize="11"/>
+                                        <ProgressBar Name="BatchProgressBar" Minimum="0" Maximum="100" Height="4" Foreground="#D97706" Background="#333337"/>
+                                    </StackPanel>
+
                                     <Border Name="SessionDocsDropZone" Height="80" Background="#252526" BorderBrush="#007ACC" BorderThickness="1" CornerRadius="6" DragDrop.AllowDrop="True">
                                         <Button Name="AttachDocumentButton" Content="📄 Allega Documento (PDF/DOCX/TXT)" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Background="Transparent" Foreground="#A0A0A0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Cursor="Hand"/>
                                     </Border>
