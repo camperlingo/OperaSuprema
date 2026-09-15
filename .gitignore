@@ -1,0 +1,10 @@
+bin/
+obj/
+*.user
+*.suo
+.vs/
+.vscode/
+codebase_opera_v2*.txt
+*.wav
+*.png
+*.tmp
