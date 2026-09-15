@@ -37,6 +37,7 @@ namespace OperaSuprema.GUI
     private readonly DecisionLedgerService _ledgerService;
     private readonly MemoryRouter _memoryRouter;
 	private ChatSession _currentSession = new ChatSession();
+        private TelemetryMonitor? _telemetryMonitor;
         
         // Cronologia e Flag Vocale
         private HashSet<string> _loadedProjectsHistory = new HashSet<string>();
@@ -142,6 +143,11 @@ namespace OperaSuprema.GUI
 
             var sendButton = this.FindControl<Button>("SendButton");
             if (sendButton != null) sendButton.Click += OnSendButtonClicked;
+
+            _telemetryMonitor = new TelemetryMonitor();
+            _telemetryMonitor.OnTelemetryUpdated += UpdateTelemetryUI;
+            _telemetryMonitor.Start();
+            this.Closed += (s, e) => _telemetryMonitor?.Stop();
 
             // NUOVI BOTTONI DELLO SPLASH SCREEN:
             var btnIde = this.FindControl<Button>("BootIdeModeButton");
@@ -594,6 +600,34 @@ namespace OperaSuprema.GUI
         }
 
         // --- ROUTING MESSAGGI (L0 ROUTER E ARCHITETTO) ---
+        private void UpdateTelemetryUI(TelemetryData data)
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                var txtRam = this.FindControl<TextBlock>("TxtRamUsage");
+                var barRam = this.FindControl<ProgressBar>("BarRamUsage");
+                if (txtRam != null) txtRam.Text = $"RAM Libera: {data.RamAvailableGb:F1} GB / {data.RamTotalGb:F1} GB";
+                if (barRam != null) barRam.Value = data.RamUsedPercent;
+
+                var ledMaster = this.FindControl<TextBlock>("LedMasterMentor");
+                var ledCoder = this.FindControl<TextBlock>("LedCoderNode");
+                var ledVision = this.FindControl<TextBlock>("LedVision");
+                var ledAudio = this.FindControl<TextBlock>("LedAudio");
+                var ledEmbed = this.FindControl<TextBlock>("LedEmbed");
+                var ledQdrant = this.FindControl<TextBlock>("LedQdrant");
+
+                if (ledMaster != null) ledMaster.Foreground = data.MasterMentorOnline ? Brushes.SpringGreen : Brushes.Gray;
+                if (ledCoder != null) ledCoder.Foreground = data.CoderOnline ? Brushes.SpringGreen : Brushes.Gray;
+                if (ledVision != null) ledVision.Foreground = data.VisionJakOnline ? Brushes.SpringGreen : Brushes.Gray;
+                if (ledAudio != null) ledAudio.Foreground = data.AudioAnalyzerOnline ? Brushes.SpringGreen : Brushes.Gray;
+                if (ledEmbed != null) ledEmbed.Foreground = data.EmbeddingOnline ? Brushes.SpringGreen : Brushes.Gray;
+                if (ledQdrant != null) ledQdrant.Foreground = data.QdrantOnline ? Brushes.SpringGreen : Brushes.Red;
+
+                var txtQdrant = this.FindControl<TextBlock>("TxtQdrant");
+                if (txtQdrant != null) txtQdrant.Text = $"Qdrant ({data.TotalVectors} vettori)";
+            });
+        }
+
         private async void OnSendButtonClicked(object? sender, RoutedEventArgs? e = null)
         {
             var inputTextBox = this.FindControl<TextBox>("UserInputTextBox");
