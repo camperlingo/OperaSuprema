@@ -14,8 +14,11 @@ class Program
         AppDomain.CurrentDomain.ProcessExit += (s, e) => KillLlamaServers();
         AppDomain.CurrentDomain.UnhandledException += (s, e) => KillLlamaServers();
         
-        Console.CancelKeyPress += (s, e) => { KillLlamaServers(); e.Cancel = false; };
-        System.Runtime.Loader.AssemblyLoadContext.Default.Unloading += (ctx) => KillLlamaServers();
+        if (!System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows))
+        {
+            System.Runtime.Loader.AssemblyLoadContext.Default.Unloading += (ctx) => KillLlamaServers();
+            Console.CancelKeyPress += (s, e) => { KillLlamaServers(); e.Cancel = false; };
+        }
 
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }
