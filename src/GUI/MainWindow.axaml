@@ -148,7 +148,7 @@
                     </Grid>
 
                     <Border Grid.Column="2" Background="#1E1E1E" BorderBrush="#3F3F46" BorderThickness="1,0,0,0">
-                        <Grid RowDefinitions="Auto, *">
+                        <Grid RowDefinitions="Auto, Auto, *">
                             <Border Grid.Row="0" Background="#252526" BorderBrush="#3F3F46" BorderThickness="0,0,0,1" Padding="15">
                                 <StackPanel Spacing="15">
                                     <TextBlock Text="⚙️ STATO PRODUZIONE (AUTONOMA)" FontWeight="Black" FontSize="14" Foreground="#D97706" LetterSpacing="1"/>
@@ -178,7 +178,28 @@
                                 </StackPanel>
                             </Border>
 
-                            <ScrollViewer Grid.Row="1" Margin="15">
+                            <!-- NUOVA SEZIONE: FALDONE DOCUMENTI SESSIONE -->
+                            <Border Grid.Row="1" Margin="0" Padding="15" BorderBrush="#3F3F46" BorderThickness="0,0,0,1">
+                                <StackPanel Spacing="10">
+                                    <TextBlock Text="📂 FALDONE DOCUMENTI SESSIONE" Foreground="#007ACC" FontWeight="Bold" FontSize="14" LetterSpacing="1"/>
+                                    
+                                    <Border Name="SessionDocsDropZone" Height="80" Background="#252526" BorderBrush="#007ACC" BorderThickness="1" CornerRadius="6" DragDrop.AllowDrop="True">
+                                        <Button Name="AttachDocumentButton" Content="📄 Allega Documento (PDF/DOCX/TXT)" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Background="Transparent" Foreground="#A0A0A0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Cursor="Hand"/>
+                                    </Border>
+                                    
+                                    <ListBox Name="SessionDocsList" MaxHeight="120" Background="#1E1E1E" Foreground="#CCCCCC" CornerRadius="4">
+                                        <!-- Gli item verranno popolati via code-behind -->
+                                    </ListBox>
+                                    
+                                    <StackPanel Orientation="Horizontal" Spacing="5" HorizontalAlignment="Center">
+                                        <Button Name="BtnDocSintesi" Content="📝 Sintesi" Background="#333337" Foreground="White" FontSize="11" CornerRadius="4" Cursor="Hand"/>
+                                        <Button Name="BtnDocAnalisi" Content="⚖️ Analisi Legale" Background="#333337" Foreground="White" FontSize="11" CornerRadius="4" Cursor="Hand"/>
+                                        <Button Name="BtnDocEstrai" Content="📊 Estrai Dati" Background="#333337" Foreground="White" FontSize="11" CornerRadius="4" Cursor="Hand"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+
+                            <ScrollViewer Grid.Row="2" Margin="15">
                                 <StackPanel Name="PipelineLogPanel" Spacing="10">
                                     <TextBlock Text="> Sistemi pronti. 112GB VRAM Allocata." Foreground="#4EC9B0" FontFamily="Consolas" FontSize="12"/>
                                 </StackPanel>

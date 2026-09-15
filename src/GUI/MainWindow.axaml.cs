@@ -53,6 +53,8 @@ namespace OperaSuprema.GUI
         private readonly List<Dictionary<string, string>> _chatHistory = new();
         private readonly List<Dictionary<string, object>> _jakHistory = new();
         private readonly VectorMemoryManager _vectorMemory = new VectorMemoryManager();
+        private readonly SessionDocumentManager _sessionDocManager;
+        private readonly List<string> _currentSessionDocs = new();
 	private readonly AutonomousCrawler _crawler;
         private bool _isRecording = false;
         private System.Diagnostics.Process? _audioProcess;
@@ -69,7 +71,28 @@ namespace OperaSuprema.GUI
             var stepChatManager = new StepChatManager(_vectorMemory);
             _ledgerService = new DecisionLedgerService();
             _memoryRouter = new MemoryRouter();
-            _sessionManager = new SessionManager(stepChatManager, _ledgerService);
+            _sessionDocManager = new SessionDocumentManager(_vectorMemory);
+            _sessionManager = new SessionManager(stepChatManager, _ledgerService, _sessionDocManager);
+
+            // Hook Faldone UI
+            var attachDocBtn = this.FindControl<Button>("AttachDocumentButton");
+            if (attachDocBtn != null) attachDocBtn.Click += OnAttachDocumentButtonClicked;
+            
+            var dropZone = this.FindControl<Border>("SessionDocsDropZone");
+            if (dropZone != null)
+            {
+                Avalonia.Input.DragDrop.SetAllowDrop(dropZone, true);
+                dropZone.AddHandler(Avalonia.Input.DragDrop.DropEvent, OnSessionDocsDrop);
+            }
+            
+            var btnSintesi = this.FindControl<Button>("BtnDocSintesi");
+            if (btnSintesi != null) btnSintesi.Click += (s, e) => { UserInputTextBox.Text = "Fornisci una sintesi esecutiva chiara e discorsiva dei documenti caricati."; OnSendButtonClicked(null, null); };
+            
+            var btnAnalisi = this.FindControl<Button>("BtnDocAnalisi");
+            if (btnAnalisi != null) btnAnalisi.Click += (s, e) => { UserInputTextBox.Text = "Analizza i documenti evidenziando clausole critiche, scadenze e profili di rischio normativo."; OnSendButtonClicked(null, null); };
+            
+            var btnEstrai = this.FindControl<Button>("BtnDocEstrai");
+            if (btnEstrai != null) btnEstrai.Click += (s, e) => { UserInputTextBox.Text = "Estrai tutti i dati numerici, contabili o cronologici organizzandoli in tabelle Markdown."; OnSendButtonClicked(null, null); };
 
 	    // Aggancio bottone Blueprint
             var btnBlueprint = this.FindControl<Button>("OpenBlueprintButton");
@@ -733,6 +756,15 @@ namespace OperaSuprema.GUI
                 contextData += "=== CONVERSAZIONI PASSATE PERTINENTI (MEMORIA STORICA) ===\n" +
                                string.Join("\n---\n", contextPayload.RetrievedSnippets) +
                                "\n==========================================================\n\n";
+            }
+            
+            // --- INIEZIONE FALDONE DOCUMENTI SESSIONE ---
+            var docSnippets = await _sessionDocManager.SearchSessionDocsAsync(_currentSession.Id, userText, topK: 4);
+            if (docSnippets.Count > 0)
+            {
+                contextData += "=== DOCUMENTI CARICATI NELLA SESSIONE (FALDONE) ===\n" +
+                               string.Join("\n---\n", docSnippets) +
+                               "\n=====================================================\n\n";
             }
             // ----------------------------------------------------------------------
 
@@ -3474,6 +3506,65 @@ REGOLA SUPREMA DI FORMATTAZIONE: Per OGNI file, usa TASSATIVAMENTE questo format
             {
                 Dispatcher.UIThread.Post(() => AppendToChat($"[ERRORE BLUEPRINT]: Impossibile aprire l'editor guidato. {ex.Message}", Avalonia.Media.Brushes.Red));
             }
+        }
+
+        private async void OnAttachDocumentButtonClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+        {
+            var topLevel = Avalonia.Controls.TopLevel.GetTopLevel(this);
+            if (topLevel == null) return;
+            
+            var files = await topLevel.StorageProvider.OpenFilePickerAsync(new Avalonia.Platform.Storage.FilePickerOpenOptions
+            {
+                Title = "Allega Documento al Faldone",
+                AllowMultiple = true
+            });
+
+            if (files != null && files.Count > 0)
+            {
+                foreach (var file in files)
+                {
+                    if (file.TryGetLocalPath() is string localPath)
+                    {
+                        _currentSessionDocs.Add(System.IO.Path.GetFileName(localPath));
+                        await _sessionDocManager.IngestDocumentAsync(_currentSession.Id, localPath, (msg) => {
+                            Dispatcher.UIThread.Post(() => AppendToChat(msg, Avalonia.Media.Brushes.Orange));
+                        });
+                    }
+                }
+                RefreshSessionDocsUI();
+            }
+        }
+
+        private async void OnSessionDocsDrop(object? sender, Avalonia.Input.DragEventArgs e)
+        {
+            var files = Avalonia.Input.DataTransferExtensions.TryGetFiles(e.DataTransfer);
+            if (files != null)
+            {
+                foreach (var file in files)
+                {
+                    if (file.TryGetLocalPath() is string localPath && System.IO.File.Exists(localPath))
+                    {
+                        _currentSessionDocs.Add(System.IO.Path.GetFileName(localPath));
+                        await _sessionDocManager.IngestDocumentAsync(_currentSession.Id, localPath, (msg) => {
+                            Dispatcher.UIThread.Post(() => AppendToChat(msg, Avalonia.Media.Brushes.Orange));
+                        });
+                    }
+                }
+                RefreshSessionDocsUI();
+            }
+        }
+
+        private void RefreshSessionDocsUI()
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                var listbox = this.FindControl<Avalonia.Controls.ListBox>("SessionDocsList");
+                if (listbox != null)
+                {
+                    listbox.ItemsSource = null; // force refresh
+                    listbox.ItemsSource = _currentSessionDocs;
+                }
+            });
         }
 
         private async Task ShowDecisionLedgerAsync()
