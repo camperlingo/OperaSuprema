@@ -1,0 +1,21 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="OperaSuprema.GUI.LlamaWarningWindow"
+        Title="⚠️ Missing llama-server" Width="600" Height="400"
+        WindowStartupLocation="CenterOwner" CanResize="False"
+        Background="#1E1E1E">
+    
+    <StackPanel Margin="25" Spacing="15">
+        <!-- Bottone Switch Lingua -->
+        <Button Name="BtnToggleLang" Content="🇬🇧 Switch to English" HorizontalAlignment="Right" Cursor="Hand" Background="#3F3F46" Foreground="White" Padding="10,5"/>
+        
+        <!-- Titolo -->
+        <TextBlock Name="TxtTitle" Text="Eseguibile llama-server non trovato!" Foreground="#FF6B6B" FontSize="22" FontWeight="Bold" TextAlignment="Center" Margin="0,10,0,10"/>
+        
+        <!-- Messaggio Istruzioni -->
+        <TextBlock Name="TxtMessage" TextWrapping="Wrap" Foreground="#E2E2E2" FontSize="15" LineHeight="24"/>
+        
+        <!-- Bottone Chiusura -->
+        <Button Name="BtnClose" Content="Ho capito / Understood" HorizontalAlignment="Center" Margin="0,20,0,0" Width="250" HorizontalContentAlignment="Center" Cursor="Hand" Background="#007ACC" Foreground="White" FontSize="16" Padding="10"/>
+    </StackPanel>
+</Window>
