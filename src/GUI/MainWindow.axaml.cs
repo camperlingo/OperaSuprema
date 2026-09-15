@@ -594,7 +594,7 @@ namespace OperaSuprema.GUI
         }
 
         // --- ROUTING MESSAGGI (L0 ROUTER E ARCHITETTO) ---
-        private async void OnSendButtonClicked(object? sender, RoutedEventArgs e)
+        private async void OnSendButtonClicked(object? sender, RoutedEventArgs? e = null)
         {
             var inputTextBox = this.FindControl<TextBox>("UserInputTextBox");
             var sendBtn = this.FindControl<Button>("SendButton");

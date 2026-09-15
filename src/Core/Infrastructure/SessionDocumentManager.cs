@@ -204,7 +204,7 @@ namespace OperaSuprema.Core.Infrastructure
                                 
                                 progress?.Report((currentBatch, totalBatches, endPage, totalPages, "Estrazione testo..."));
 
-                                string batchText = "";
+                                string? batchText = "";
                                 for (int p = startPage; p <= endPage; p++)
                                 {
                                     batchText += document.GetPage(p).Text + "\n";
