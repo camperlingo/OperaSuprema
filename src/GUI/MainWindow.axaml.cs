@@ -599,13 +599,19 @@ namespace OperaSuprema.GUI
             var inputTextBox = this.FindControl<TextBox>("UserInputTextBox");
             var sendBtn = this.FindControl<Button>("SendButton");
             
-            if (inputTextBox == null || (string.IsNullOrWhiteSpace(inputTextBox.Text) && string.IsNullOrEmpty(_currentImagePath))) return;
+            var lensSintesi = this.FindControl<Avalonia.Controls.Primitives.ToggleButton>("LensSintesi");
+            var lensAnalisi = this.FindControl<Avalonia.Controls.Primitives.ToggleButton>("LensAnalisi");
+            var lensEstrai = this.FindControl<Avalonia.Controls.Primitives.ToggleButton>("LensEstrai");
 
-            // BLINDATURA: Disabilita UI durante l'elaborazione per evitare doppi invii
+            bool hasLens = (lensSintesi != null && lensSintesi.IsChecked == true) || 
+                           (lensAnalisi != null && lensAnalisi.IsChecked == true) || 
+                           (lensEstrai != null && lensEstrai.IsChecked == true);
+
+            if (inputTextBox == null || (string.IsNullOrWhiteSpace(inputTextBox.Text) && string.IsNullOrEmpty(_currentImagePath) && !hasLens && string.IsNullOrEmpty(_pendingAudioPath))) return;
+
             inputTextBox.IsEnabled = false;
             if (sendBtn != null) sendBtn.IsEnabled = false;
 
-            // Inneschiamo un fusibile logico da 120 secondi per prevenire zombie states
             if (!_generationCts.IsCancellationRequested) _generationCts.Cancel();
             _generationCts = new CancellationTokenSource(TimeSpan.FromSeconds(120));
             
@@ -614,16 +620,52 @@ namespace OperaSuprema.GUI
                 string userText = inputTextBox.Text ?? "";
                 inputTextBox.Text = "";
 
-                if (_pendingAudioPath != null)
+                if (hasLens)
                 {
-                    string aUserMsgId = Guid.NewGuid().ToString();
-                    int aUserTokens = userText.Length / 4;
-                    await _ledgerService.InsertChatMessageAsync(aUserMsgId, _currentSession.Id, "user", userText, aUserTokens);
-                    _chatHistory.Add(new Dictionary<string, string> { { "role", "user" }, { "content", userText } });
-                    _currentSession.Messages.Add(new OperaSuprema.Core.Infrastructure.ChatMessage { Role = "user", Content = userText });
-                    await _sessionManager.SaveSessionAsync(_currentSession, _currentWorkspacePath);
-                    await InvokeAudioAnalyzerAsync(userText, _pendingAudioPath);
-                    return;
+                    if (string.IsNullOrWhiteSpace(userText))
+                    {
+                        if (lensSintesi != null && lensSintesi.IsChecked == true) userText = "Fornisci una sintesi esecutiva chiara e discorsiva dei documenti caricati.";
+                        else if (lensAnalisi != null && lensAnalisi.IsChecked == true) userText = "Analizza i documenti evidenziando clausole critiche, scadenze e profili di rischio normativo.";
+                        else if (lensEstrai != null && lensEstrai.IsChecked == true) userText = "Estrai tutti i dati numerici, contabili o cronologici organizzandoli in tabelle Markdown.";
+                    }
+                    else
+                    {
+                        if (lensSintesi != null && lensSintesi.IsChecked == true) userText = $"Rispondi sotto forma di sintesi esecutiva: {userText}";
+                        else if (lensAnalisi != null && lensAnalisi.IsChecked == true) userText = $"Rispondi sotto forma di analisi legale: {userText}";
+                        else if (lensEstrai != null && lensEstrai.IsChecked == true) userText = $"Rispondi sotto forma di estrazione dati: {userText}";
+                    }
+                }
+
+                if (!string.IsNullOrEmpty(_pendingAudioPath))
+                {
+                    if (string.IsNullOrWhiteSpace(userText) && !hasLens)
+                    {
+                        AppendToChat($"[MASTER MENTOR]: Ho ricevuto la traccia audio {Path.GetFileName(_pendingAudioPath)}. Poiché non hai specificato l'obiettivo dell'analisi, scegli un'opzione digitando il numero corrispondente:\n1️⃣ Analisi forense e prosodica\n2️⃣ Riconoscimento acustico ambientale\n3️⃣ Analisi musicale avanzata\n4️⃣ Trascrizione e sintesi semantica pura\nDigita il numero o scrivi una richiesta personalizzata.", Avalonia.Media.Brushes.LightGreen);
+                        return;
+                    }
+                    else
+                    {
+                        string audioDirective = userText;
+                        if (userText.Trim() == "1") audioDirective = "Esegui un'analisi forense e prosodica: studia l'intonazione, le emozioni, lo stress vocale e le incongruenze nella voce.";
+                        else if (userText.Trim() == "2") audioDirective = "Esegui un riconoscimento acustico ambientale: rileva rumori di fondo, colpi, allarmi, vetri infranti o eventi sonori rilevanti.";
+                        else if (userText.Trim() == "3") audioDirective = "Esegui un'analisi musicale avanzata: riconosci strumenti, timbri, note e progressioni armoniche.";
+                        else if (userText.Trim() == "4") audioDirective = "Trascrivi l'audio ed esegui una sintesi semantica pura: scomponi i dialoghi e riassumi i punti chiave.";
+
+                        string audioPath = _pendingAudioPath;
+                        _pendingAudioPath = null;
+                        
+                        AppendToChat($"[EMANUELE]: {userText}", Avalonia.Media.Brushes.White);
+                        
+                        string aUserMsgId = Guid.NewGuid().ToString();
+                        int aUserTokens = userText.Length / 4;
+                        await _ledgerService.InsertChatMessageAsync(aUserMsgId, _currentSession.Id, "user", userText, aUserTokens);
+                        _chatHistory.Add(new Dictionary<string, string> { { "role", "user" }, { "content", userText } });
+                        _currentSession.Messages.Add(new OperaSuprema.Core.Infrastructure.ChatMessage { Role = "user", Content = userText });
+                        await _sessionManager.SaveSessionAsync(_currentSession, _currentWorkspacePath);
+                        
+                        await InvokeAudioAnalyzerAsync(audioDirective, audioPath);
+                        return;
+                    }
                 }
 
                 // --- PATCH BUG TITOLI CHAT: Rinomina "Nuova Conversazione" subito al primo invio ---
@@ -710,51 +752,131 @@ namespace OperaSuprema.GUI
 
         // --- MOTORE ARCHITETTO (HUB & SPOKE CON PIPELINE UNIFICATA DB + WEB) ---
         
-        private async Task<string> CallLLMSilentAsync(string prompt, System.Threading.CancellationToken ct = default)
+        private async Task<string> CallLLMSilentAsync(List<Dictionary<string, string>> payloadHistory, CancellationToken ct = default)
         {
-            var requestPayload = new
-            {
-                model = "gemma-3-27b",
-                messages = new[] { new { role = "user", content = prompt } },
-                temperature = 0.3,
-                max_tokens = 4096
+            var payload = new { 
+                messages = payloadHistory, 
+                temperature = 0.1, 
+                max_tokens = 2048, 
+                stream = false, 
+                frequency_penalty = 0.0, 
+                presence_penalty = 0.0 
             };
 
-            var request = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Post, "http://localhost:8081/v1/chat/completions")
+            var request = new HttpRequestMessage(HttpMethod.Post, "http://localhost:8081/v1/chat/completions")
             {
-                Content = new System.Net.Http.StringContent(System.Text.Json.JsonSerializer.Serialize(requestPayload), System.Text.Encoding.UTF8, "application/json")
+                Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
             };
 
-            var response = await _httpClient.SendAsync(request, ct);
-            response.EnsureSuccessStatusCode();
+            try
+            {
+                var response = await _httpClient.SendAsync(request, ct);
+                if (response.IsSuccessStatusCode)
+                {
+                    string jsonResponse = await response.Content.ReadAsStringAsync(ct);
+                    using var doc = JsonDocument.Parse(jsonResponse);
+                    if (doc.RootElement.TryGetProperty("choices", out var choices) && choices.GetArrayLength() > 0)
+                    {
+                        var firstChoice = choices[0];
+                        if (firstChoice.TryGetProperty("message", out var msg) && msg.TryGetProperty("content", out var content))
+                        {
+                            return content.GetString() ?? "";
+                        }
+                    }
+                }
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex) { Console.WriteLine($"[SILENT LLM ERROR]: {ex.Message}"); }
+            
+            return "";
+        }
 
-            var jsonResponse = await response.Content.ReadAsStringAsync(ct);
-            using var doc = System.Text.Json.JsonDocument.Parse(jsonResponse);
-            return doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString() ?? "";
+        private async Task<string> CallLLMSilentAsync(string prompt, CancellationToken ct = default)
+        {
+            var history = new List<Dictionary<string, string>>
+            {
+                new() { { "role", "user" }, { "content", prompt } }
+            };
+            return await CallLLMSilentAsync(history, ct);
         }
 
         
-        private async Task InvokeAudioAnalyzerAsync(string userText, string audioPath)
+        private async Task InvokeAudioAnalyzerAsync(string directive, string audioPath)
         {
+            await SmartModelSwapAsync("MasterMentor_Architetto_Segugio", "AudioAnalyzer", "🎧 Accensione Analizzatore Audio. Caricamento in corso...");
+            AppendToChat("[SISTEMA]: Interrogazione modello Qwen2-Audio (Porta 8085)...", Avalonia.Media.Brushes.Cyan);
+            
             try
             {
-                AppendToChat($"[SISTEMA]: Analisi audio in corso con Qwen2-Audio-7B via porta 8085...", Avalonia.Media.Brushes.Orange);
-                
-                // Simula chiamata a Qwen2-Audio
-                string audioResponse = "Analisi audio completata (risposta simulata da Qwen2-Audio).";
+                var payloadHistory = new List<Dictionary<string, object>>();
+                var contentList = new List<object>
+                {
+                    new { type = "text", text = directive }
+                };
 
-                _chatHistory.Add(new Dictionary<string, string> { { "role", "user" }, { "content", userText } });
-                _chatHistory.Add(new Dictionary<string, string> { { "role", "model" }, { "content", audioResponse } });
-                
-                _currentSession.Messages.Add(new OperaSuprema.Core.Infrastructure.ChatMessage { Role = "user", Content = userText });
-                _currentSession.Messages.Add(new OperaSuprema.Core.Infrastructure.ChatMessage { Role = "model", Content = audioResponse });
-                await _sessionManager.SaveSessionAsync(_currentSession);
+                byte[] audioBytes = await File.ReadAllBytesAsync(audioPath);
+                string base64Audio = Convert.ToBase64String(audioBytes);
+                string mimeType = audioPath.EndsWith(".mp3") ? "audio/mp3" : (audioPath.EndsWith(".ogg") ? "audio/ogg" : "audio/wav");
 
-                AppendToChat($"[Qwen2-Audio]: {audioResponse}", Avalonia.Media.Brushes.LightGreen);
+                contentList.Add(new { type = "audio_url", audio_url = new { url = $"data:{mimeType};base64,{base64Audio}" } });
+
+                payloadHistory.Add(new Dictionary<string, object>
+                {
+                    { "role", "user" },
+                    { "content", contentList }
+                });
+
+                var payload = new
+                {
+                    messages = payloadHistory,
+                    temperature = 0.2,
+                    max_tokens = 2048,
+                    stream = false
+                };
+
+                var request = new HttpRequestMessage(HttpMethod.Post, "http://localhost:8085/v1/chat/completions")
+                {
+                    Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
+                };
+                request.Headers.Add("Authorization", "Bearer opera-suprema");
+
+                var response = await _httpClient.SendAsync(request, _generationCts.Token);
+                if (response.IsSuccessStatusCode)
+                {
+                    string jsonResponse = await response.Content.ReadAsStringAsync();
+                    using var doc = JsonDocument.Parse(jsonResponse);
+                    if (doc.RootElement.TryGetProperty("choices", out var choices) && choices.GetArrayLength() > 0)
+                    {
+                        var msg = choices[0].GetProperty("message").GetProperty("content").GetString() ?? "";
+                        if (!string.IsNullOrWhiteSpace(msg))
+                        {
+                            Dispatcher.UIThread.Post(() => AppendToChat($"[QWEN AUDIO]:\n{msg.Trim()}", Avalonia.Media.Brushes.MediumPurple));
+                            
+                            _chatHistory.Add(new Dictionary<string, string> { { "role", "assistant" }, { "content", msg } });
+                            _currentSession.Messages.Add(new OperaSuprema.Core.Infrastructure.ChatMessage { Role = "assistant", Content = msg });
+                            
+                            string audioBotMsgId = Guid.NewGuid().ToString();
+                            int audioBotTokens = msg.Length / 4;
+                            await _ledgerService.InsertChatMessageAsync(audioBotMsgId, _currentSession.Id, "assistant", msg, audioBotTokens);
+                            
+                            await _sessionManager.SaveSessionAsync(_currentSession, _currentWorkspacePath);
+                        }
+                    }
+                }
+                else
+                {
+                    string err = await response.Content.ReadAsStringAsync();
+                    Dispatcher.UIThread.Post(() => AppendToChat($"[QWEN AUDIO ERRORE]: {err}", Avalonia.Media.Brushes.Red));
+                }
+            }
+            catch (Exception ex)
+            {
+                Dispatcher.UIThread.Post(() => AppendToChat($"[ERRORE QWEN AUDIO]: {ex.Message}", Avalonia.Media.Brushes.Red));
             }
             finally
             {
                 _pendingAudioPath = null;
+                _containerManager.KillContainer("AudioAnalyzer");
             }
         }
 

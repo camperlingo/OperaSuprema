@@ -1,20 +1,18 @@
 using Avalonia;
 using System;
+using System.Runtime.InteropServices;
 
 namespace OperaSuprema;
 
 class Program
 {
-    // Initialization code. Don't use any Avalonia, third-party APIs or any
-    // SynchronizationContext-reliant code before AppMain is called: things aren't initialized
-    // yet and stuff might break.
     [STAThread]
     public static void Main(string[] args)
     {
         AppDomain.CurrentDomain.ProcessExit += (s, e) => KillLlamaServers();
         AppDomain.CurrentDomain.UnhandledException += (s, e) => KillLlamaServers();
-        
-        if (!System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows))
+
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
             System.Runtime.Loader.AssemblyLoadContext.Default.Unloading += (ctx) => KillLlamaServers();
             Console.CancelKeyPress += (s, e) => { KillLlamaServers(); e.Cancel = false; };
@@ -31,7 +29,6 @@ class Program
         }
     }
 
-    // Avalonia configuration, don't remove; also used by visual designer.
     public static AppBuilder BuildAvaloniaApp()
         => AppBuilder.Configure<App>()
             .UsePlatformDetect()
