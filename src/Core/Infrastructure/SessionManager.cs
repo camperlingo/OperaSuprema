@@ -36,15 +36,17 @@ namespace OperaSuprema.Core.Infrastructure
         private readonly string _genericChatsPath;
         private readonly StepChatManager _stepChatManager; // <-- Il nostro nuovo motore
         private readonly DecisionLedgerService _ledgerService;
+        private readonly SessionDocumentManager _sessionDocManager;
         
         // Soglia indicativa: 20.000 token (circa 80.000 caratteri) per il taglio automatico
         private const int TokenThreshold = 10000; 
 
         // Iniezione di dipendenza nel costruttore
-        public SessionManager(StepChatManager stepChatManager, DecisionLedgerService ledgerService)
+        public SessionManager(StepChatManager stepChatManager, DecisionLedgerService ledgerService, SessionDocumentManager sessionDocManager)
         {
             _stepChatManager = stepChatManager;
             _ledgerService = ledgerService;
+            _sessionDocManager = sessionDocManager;
             
             // Crea la directory nascosta di default nel sistema Linux dell'utente[cite: 2]
             string homePath = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
@@ -176,6 +178,9 @@ namespace OperaSuprema.Core.Infrastructure
             
             // 3. Pulisce la memoria relazionale
             await _ledgerService.DeleteChatSafelyAsync(session.Id);
+            
+            // 4. Pulisce i documenti vettoriali
+            await _sessionDocManager.DeleteSessionDocsAsync(session.Id);
         }
 
         // Aggiornamento metodi a chiamate Task
