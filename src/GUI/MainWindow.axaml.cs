@@ -782,6 +782,28 @@ namespace OperaSuprema.GUI
 
             // Prepariamo un "clone" temporaneo della chat da inviare al server solo per questo giro
             var tempHistory = new List<Dictionary<string, string>>(_chatHistory);
+            
+            // --- CONDIZIONAMENTO SYSTEM PROMPT PER FALDONE DOCUMENTI ---
+            bool isDocumentAnalysis = docSnippets.Count > 0 || 
+                                      userText.Contains("Fornisci una sintesi esecutiva") || 
+                                      userText.Contains("Analizza i documenti evidenziando") || 
+                                      userText.Contains("Estrai tutti i dati numerici");
+                                      
+            if (isDocumentAnalysis && tempHistory.Count > 0 && tempHistory[0]["role"] == "system")
+            {
+                tempHistory[0] = new Dictionary<string, string>
+                {
+                    { "role", "system" },
+                    { "content", "Sei un Consulente Esperto Multidisciplinare (Giuridico, Tecnico, Scientifico).\n" +
+                                 "- NON generare MAI blocchi JSON per modifiche software o per il Coder.\n" +
+                                 "- NON emettere MAI tag come [GENERA_CODICE].\n" +
+                                 "- NON generare MAI bivi decisionali finali (A/B/C).\n" +
+                                 "- Rispondi in Markdown chiaro, usando titoli, elenchi puntati, evidenziando scadenze, penali pecuniarie e rischi di nullità/vessatorietà ex lege (es. artt. 1341-1342 c.c.).\n" +
+                                 "Analizza i documenti forniti nel contesto con la massima precisione e competenza." }
+                };
+            }
+            // -----------------------------------------------------------
+
             if (!string.IsNullOrEmpty(contextData))
             {
                 // Inietta il papiro di documenti SOLO per l'inferenza attuale, di nascosto
@@ -3521,6 +3543,30 @@ REGOLA SUPREMA DI FORMATTAZIONE: Per OGNI file, usa TASSATIVAMENTE questo format
 
             if (files != null && files.Count > 0)
             {
+                var progressHandler = new Progress<(int currentBatch, int totalBatches, int currentPage, int totalPages, string status)>(p =>
+                {
+                    Dispatcher.UIThread.Post(() =>
+                    {
+                        var panel = this.FindControl<StackPanel>("BatchProgressPanel");
+                        var pBar = this.FindControl<ProgressBar>("BatchProgressBar");
+                        var tBlock = this.FindControl<TextBlock>("BatchProgressText");
+                        if (panel != null && pBar != null && tBlock != null)
+                        {
+                            panel.IsVisible = true;
+                            if (p.totalBatches == -1)
+                            {
+                                pBar.Value = p.currentPage;
+                                tBlock.Text = p.status;
+                            }
+                            else
+                            {
+                                pBar.Value = (double)p.currentBatch / p.totalBatches * 100;
+                                tBlock.Text = $"Lotto {p.currentBatch}/{p.totalBatches} - Pagina {p.currentPage}/{p.totalPages} - {p.status}";
+                            }
+                        }
+                    });
+                });
+
                 foreach (var file in files)
                 {
                     if (file.TryGetLocalPath() is string localPath)
@@ -3528,9 +3574,13 @@ REGOLA SUPREMA DI FORMATTAZIONE: Per OGNI file, usa TASSATIVAMENTE questo format
                         _currentSessionDocs.Add(System.IO.Path.GetFileName(localPath));
                         await _sessionDocManager.IngestDocumentAsync(_currentSession.Id, localPath, (msg) => {
                             Dispatcher.UIThread.Post(() => AppendToChat(msg, Avalonia.Media.Brushes.Orange));
-                        });
+                        }, progressHandler);
                     }
                 }
+                
+                var finalPanel = this.FindControl<StackPanel>("BatchProgressPanel");
+                if (finalPanel != null) finalPanel.IsVisible = false;
+
                 RefreshSessionDocsUI();
             }
         }
@@ -3540,6 +3590,30 @@ REGOLA SUPREMA DI FORMATTAZIONE: Per OGNI file, usa TASSATIVAMENTE questo format
             var files = Avalonia.Input.DataTransferExtensions.TryGetFiles(e.DataTransfer);
             if (files != null)
             {
+                var progressHandler = new Progress<(int currentBatch, int totalBatches, int currentPage, int totalPages, string status)>(p =>
+                {
+                    Dispatcher.UIThread.Post(() =>
+                    {
+                        var panel = this.FindControl<StackPanel>("BatchProgressPanel");
+                        var pBar = this.FindControl<ProgressBar>("BatchProgressBar");
+                        var tBlock = this.FindControl<TextBlock>("BatchProgressText");
+                        if (panel != null && pBar != null && tBlock != null)
+                        {
+                            panel.IsVisible = true;
+                            if (p.totalBatches == -1)
+                            {
+                                pBar.Value = p.currentPage;
+                                tBlock.Text = p.status;
+                            }
+                            else
+                            {
+                                pBar.Value = (double)p.currentBatch / p.totalBatches * 100;
+                                tBlock.Text = $"Lotto {p.currentBatch}/{p.totalBatches} - Pagina {p.currentPage}/{p.totalPages} - {p.status}";
+                            }
+                        }
+                    });
+                });
+
                 foreach (var file in files)
                 {
                     if (file.TryGetLocalPath() is string localPath && System.IO.File.Exists(localPath))
@@ -3547,9 +3621,13 @@ REGOLA SUPREMA DI FORMATTAZIONE: Per OGNI file, usa TASSATIVAMENTE questo format
                         _currentSessionDocs.Add(System.IO.Path.GetFileName(localPath));
                         await _sessionDocManager.IngestDocumentAsync(_currentSession.Id, localPath, (msg) => {
                             Dispatcher.UIThread.Post(() => AppendToChat(msg, Avalonia.Media.Brushes.Orange));
-                        });
+                        }, progressHandler);
                     }
                 }
+                
+                var finalPanel = this.FindControl<StackPanel>("BatchProgressPanel");
+                if (finalPanel != null) finalPanel.IsVisible = false;
+
                 RefreshSessionDocsUI();
             }
         }
