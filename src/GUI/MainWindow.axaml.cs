@@ -49,7 +49,10 @@ namespace OperaSuprema.GUI
 
 	private readonly ConfigManager _configManager = new ConfigManager();
 
-        private static readonly HttpClient _httpClient = new HttpClient();
+        
+        private static readonly HttpClient _httpClient = new HttpClient { Timeout = TimeSpan.FromMinutes(30) };
+        private string? _pendingAudioPath = null;
+
         private readonly List<Dictionary<string, string>> _chatHistory = new();
         private readonly List<Dictionary<string, object>> _jakHistory = new();
         private readonly VectorMemoryManager _vectorMemory = new VectorMemoryManager();
@@ -104,7 +107,7 @@ namespace OperaSuprema.GUI
                 btnBlueprint.Click += async (s, e) => await OpenOrInitializeBlueprintAsync();
             }
 
-	    _httpClient.Timeout = TimeSpan.FromMinutes(5);
+
 
             _crawler = new AutonomousCrawler(_vectorMemory);
             
@@ -457,8 +460,7 @@ namespace OperaSuprema.GUI
                 if (file != null)
                 {
                     await using var stream = await file.OpenWriteAsync();
-                    using var writer = new StreamWriter(stream, Encoding.UTF8);
-                    
+                    using var writer = new System.IO.StreamWriter(stream, System.Text.Encoding.UTF8);
                     await SessionDossierExporter.ExportDossierToStreamAsync(writer, _currentSession, _ledgerService, _sessionDocManager);
 
                     AppendToChat($"[SISTEMA]: 📄 Dossier di Sessione esportato con successo in '{file.Name}'.", Brushes.MediumSeaGreen);
@@ -612,6 +614,18 @@ namespace OperaSuprema.GUI
                 string userText = inputTextBox.Text ?? "";
                 inputTextBox.Text = "";
 
+                if (_pendingAudioPath != null)
+                {
+                    string aUserMsgId = Guid.NewGuid().ToString();
+                    int aUserTokens = userText.Length / 4;
+                    await _ledgerService.InsertChatMessageAsync(aUserMsgId, _currentSession.Id, "user", userText, aUserTokens);
+                    _chatHistory.Add(new Dictionary<string, string> { { "role", "user" }, { "content", userText } });
+                    _currentSession.Messages.Add(new OperaSuprema.Core.Infrastructure.ChatMessage { Role = "user", Content = userText });
+                    await _sessionManager.SaveSessionAsync(_currentSession, _currentWorkspacePath);
+                    await InvokeAudioAnalyzerAsync(userText, _pendingAudioPath);
+                    return;
+                }
+
                 // --- PATCH BUG TITOLI CHAT: Rinomina "Nuova Conversazione" subito al primo invio ---
                 if (_currentSession.Title == "Nuova Conversazione" || _currentSession.Title.StartsWith("Chat del"))
                 {
@@ -695,6 +709,55 @@ namespace OperaSuprema.GUI
         }
 
         // --- MOTORE ARCHITETTO (HUB & SPOKE CON PIPELINE UNIFICATA DB + WEB) ---
+        
+        private async Task<string> CallLLMSilentAsync(string prompt, System.Threading.CancellationToken ct = default)
+        {
+            var requestPayload = new
+            {
+                model = "gemma-3-27b",
+                messages = new[] { new { role = "user", content = prompt } },
+                temperature = 0.3,
+                max_tokens = 4096
+            };
+
+            var request = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Post, "http://localhost:8081/v1/chat/completions")
+            {
+                Content = new System.Net.Http.StringContent(System.Text.Json.JsonSerializer.Serialize(requestPayload), System.Text.Encoding.UTF8, "application/json")
+            };
+
+            var response = await _httpClient.SendAsync(request, ct);
+            response.EnsureSuccessStatusCode();
+
+            var jsonResponse = await response.Content.ReadAsStringAsync(ct);
+            using var doc = System.Text.Json.JsonDocument.Parse(jsonResponse);
+            return doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString() ?? "";
+        }
+
+        
+        private async Task InvokeAudioAnalyzerAsync(string userText, string audioPath)
+        {
+            try
+            {
+                AppendToChat($"[SISTEMA]: Analisi audio in corso con Qwen2-Audio-7B via porta 8085...", Avalonia.Media.Brushes.Orange);
+                
+                // Simula chiamata a Qwen2-Audio
+                string audioResponse = "Analisi audio completata (risposta simulata da Qwen2-Audio).";
+
+                _chatHistory.Add(new Dictionary<string, string> { { "role", "user" }, { "content", userText } });
+                _chatHistory.Add(new Dictionary<string, string> { { "role", "model" }, { "content", audioResponse } });
+                
+                _currentSession.Messages.Add(new OperaSuprema.Core.Infrastructure.ChatMessage { Role = "user", Content = userText });
+                _currentSession.Messages.Add(new OperaSuprema.Core.Infrastructure.ChatMessage { Role = "model", Content = audioResponse });
+                await _sessionManager.SaveSessionAsync(_currentSession);
+
+                AppendToChat($"[Qwen2-Audio]: {audioResponse}", Avalonia.Media.Brushes.LightGreen);
+            }
+            finally
+            {
+                _pendingAudioPath = null;
+            }
+        }
+
         private async Task InvokeArchitectAsync(string userText, long currentTelegramChatId, bool useVoiceForThisChain)
         {
             // 1. CHIAMATA AL NUOVO ORCHESTRATORE (SWAP A CALDO)

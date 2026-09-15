@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
+using System.IO;
 using System.Threading.Tasks;
 using OperaSuprema.Core.Memory;
 
@@ -11,27 +11,19 @@ namespace OperaSuprema.Core.Infrastructure
     {
         public static async Task ExportDossierToStreamAsync(StreamWriter writer, ChatSession session, DecisionLedgerService ledgerService, SessionDocumentManager docManager)
         {
-            await writer.WriteLineAsync($"# 🏛️ DOSSIER ESECUTIVO DI SESSIONE: {session.Title}");
-            await writer.WriteLineAsync();
+            await writer.WriteLineAsync($"# 🏛️ DOSSIER ESECUTIVO DI SESSIONE: {session.Title}\n");
             await writer.WriteLineAsync("## 📌 METADATI OPERATIVI");
             await writer.WriteLineAsync($"- **ID Sessione:** `{session.Id}`");
             await writer.WriteLineAsync($"- **Data Esportazione:** {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
-            await writer.WriteLineAsync($"- **Workspace di riferimento:** {session.Title}");
-            await writer.WriteLineAsync();
+            await writer.WriteLineAsync($"- **Workspace di riferimento:** {session.Title}\n");
 
             await writer.WriteLineAsync("## 📂 DOCUMENTI E CORPORE ANALIZZATI");
             var docs = await docManager.GetSessionDocumentNamesAsync(session.Id);
             if (docs != null && docs.Any())
             {
-                foreach (var doc in docs)
-                {
-                    await writer.WriteLineAsync($"- 📄 `{doc}`");
-                }
+                foreach (var doc in docs) await writer.WriteLineAsync($"- 📄 `{doc}`");
             }
-            else
-            {
-                await writer.WriteLineAsync("*Nessun documento nel faldone di sessione.*");
-            }
+            else await writer.WriteLineAsync("*Nessun documento nel faldone di sessione.*");
             await writer.WriteLineAsync();
 
             await writer.WriteLineAsync("## ⚖️ REGISTRO DELLE DECISIONI ATTIVE");
@@ -47,14 +39,10 @@ namespace OperaSuprema.Core.Infrastructure
                     string safePredicate = dec.Predicate?.Replace("|", "-").Replace("\n", " ") ?? "";
                     string safeObject = dec.ObjectValue?.Replace("|", "-").Replace("\n", " ") ?? "";
                     string safeRationale = dec.Rationale?.Replace("|", "-").Replace("\n", " ") ?? "-";
-                    
                     await writer.WriteLineAsync($"| {safeSubject} | {safePredicate} | {safeObject} | {safeRationale} |");
                 }
             }
-            else
-            {
-                await writer.WriteLineAsync("*Nessuna decisione attiva registrata nel Ledger.*");
-            }
+            else await writer.WriteLineAsync("*Nessuna decisione attiva registrata nel Ledger.*");
             await writer.WriteLineAsync();
 
             await writer.WriteLineAsync("## 🧠 VERDETTI E SINTESI CHIAVE");
@@ -63,25 +51,16 @@ namespace OperaSuprema.Core.Infrastructure
             {
                 foreach (var msg in keyInsights)
                 {
-                    await writer.WriteLineAsync("> " + msg.Content?.Replace("\n", "\n> "));
-                    await writer.WriteLineAsync();
+                    await writer.WriteLineAsync("> " + msg.Content?.Replace("\n", "\n> ") + "\n");
                 }
             }
-            else
-            {
-                await writer.WriteLineAsync("*Nessuna sintesi estesa presente in questa sessione.*");
-            }
-            await writer.WriteLineAsync();
+            else await writer.WriteLineAsync("*Nessuna sintesi estesa presente in questa sessione.*\n");
 
             await writer.WriteLineAsync("## 📜 CRONISTORIA ANALITICA");
             foreach (var msg in session.Messages)
             {
                 string roleIcon = msg.Role == "user" ? "👤 **Utente:**" : "🤖 **Master Mentor:**";
-                await writer.WriteLineAsync($"{roleIcon}");
-                await writer.WriteLineAsync(msg.Content);
-                await writer.WriteLineAsync();
-                await writer.WriteLineAsync("---");
-                await writer.WriteLineAsync();
+                await writer.WriteLineAsync($"{roleIcon}\n{msg.Content}\n\n---\n");
             }
         }
     }
