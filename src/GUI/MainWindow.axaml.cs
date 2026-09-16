@@ -440,6 +440,8 @@ namespace OperaSuprema.GUI
             if (_currentImagePath != null)
             {
                 _currentImagePath = null;
+                _pendingVideoFrames = null;
+                _pendingAudioPath = null;
                 
                 var previewContainer = this.FindControl<Border>("ImagePreviewContainer");
                 if (previewContainer != null) previewContainer.IsVisible = false;
@@ -692,7 +694,37 @@ namespace OperaSuprema.GUI
                     }
                 }
 
-                if (!string.IsNullOrEmpty(_pendingAudioPath))
+                if (_pendingVideoFrames != null && _pendingVideoFrames.Count > 0)
+                {
+                    if (!string.IsNullOrEmpty(_pendingAudioPath) && (userText.Trim() == "1" || userText.Trim() == "2" || userText.Trim() == "3" || userText.Trim() == "4"))
+                    {
+                        string audioDirective = userText;
+                        if (userText.Trim() == "1") audioDirective = "Esegui un'analisi forense e prosodica: studia l'intonazione, le emozioni, lo stress vocale e le incongruenze nella voce.";
+                        else if (userText.Trim() == "2") audioDirective = "Esegui un riconoscimento acustico ambientale: rileva rumori di fondo, colpi, allarmi, vetri infranti o eventi sonori rilevanti.";
+                        else if (userText.Trim() == "3") audioDirective = "Esegui un'analisi musicale avanzata: riconosci strumenti, timbri, note e progressioni armoniche.";
+                        else if (userText.Trim() == "4") audioDirective = "Trascrivi l'audio ed esegui una sintesi semantica pura: scomponi i dialoghi e riassumi i punti chiave.";
+
+                        string audioPath = _pendingAudioPath;
+                        _pendingAudioPath = null;
+                        
+                        AppendToChat($"[EMANUELE]: {userText}", Avalonia.Media.Brushes.White);
+                        
+                        string aUserMsgId = Guid.NewGuid().ToString();
+                        int aUserTokens = userText.Length / 4;
+                        await _ledgerService.InsertChatMessageAsync(aUserMsgId, _currentSession.Id, "user", userText, aUserTokens);
+                        _chatHistory.Add(new Dictionary<string, string> { { "role", "user" }, { "content", userText } });
+                        _currentSession.Messages.Add(new OperaSuprema.Core.Infrastructure.ChatMessage { Role = "user", Content = userText });
+                        await _sessionManager.SaveSessionAsync(_currentSession, _currentWorkspacePath);
+                        
+                        await InvokeAudioAnalyzerAsync(audioDirective, audioPath);
+                        return;
+                    }
+                    else
+                    {
+                        _pendingAudioPath = null;
+                    }
+                }
+                else if (!string.IsNullOrEmpty(_pendingAudioPath))
                 {
                     if (string.IsNullOrWhiteSpace(userText) && !hasLens)
                     {
@@ -2348,6 +2380,7 @@ Metti i comandi in un blocco codice ```bash. Non aggiungere altre spiegazioni.";
             });
 
             _jakHistory.Add(new Dictionary<string, object> { { "role", "user" }, { "content", contentList } });
+            _currentSession.Messages.Add(new ChatMessage { Role = "user", Content = userPrompt });
 
             var payload = new { messages = _jakHistory, temperature = 0.7, max_tokens = 2048, stream = true };
             var request = new HttpRequestMessage(HttpMethod.Post, "http://localhost:8084/v1/chat/completions")
