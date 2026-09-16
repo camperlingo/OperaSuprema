@@ -53,6 +53,8 @@ namespace OperaSuprema.GUI
         
         private static readonly HttpClient _httpClient = new HttpClient { Timeout = TimeSpan.FromMinutes(30) };
         private string? _pendingAudioPath = null;
+        private readonly VideoPipelineService _videoPipelineService = new();
+        private List<string>? _pendingVideoFrames = null;
 
         private readonly List<Dictionary<string, string>> _chatHistory = new();
         private readonly List<Dictionary<string, object>> _jakHistory = new();
@@ -359,12 +361,13 @@ namespace OperaSuprema.GUI
 
                 var files = await topLevel.StorageProvider.OpenFilePickerAsync(new Avalonia.Platform.Storage.FilePickerOpenOptions
                 {
-                    Title = "Seleziona Immagine o File di Codice",
+                    Title = "Seleziona Immagine o File di Codice o Video",
                     AllowMultiple = true, // Ora puoi caricare più file in un colpo solo!
                     FileTypeFilter = new[]
                     {
-                        new Avalonia.Platform.Storage.FilePickerFileType("Tutti i File Supportati") { Patterns = new[] { "*.png", "*.jpg", "*.jpeg", "*.cs", "*.axaml", "*.xml", "*.json", "*.txt", "*.md" } },
+                        new Avalonia.Platform.Storage.FilePickerFileType("Tutti i File Supportati") { Patterns = new[] { "*.png", "*.jpg", "*.jpeg", "*.cs", "*.axaml", "*.xml", "*.json", "*.txt", "*.md", "*.mp4", "*.mkv", "*.avi", "*.mov", "*.webm" } },
                         new Avalonia.Platform.Storage.FilePickerFileType("Immagini (Vision)") { Patterns = new[] { "*.png", "*.jpg", "*.jpeg" } },
+                        new Avalonia.Platform.Storage.FilePickerFileType("Video") { Patterns = new[] { "*.mp4", "*.mkv", "*.avi", "*.mov", "*.webm" } },
                         new Avalonia.Platform.Storage.FilePickerFileType("Codice Sorgente") { Patterns = new[] { "*.cs", "*.axaml", "*.xml", "*.json", "*.txt", "*.md" } }
                     }
                 });
@@ -380,6 +383,25 @@ namespace OperaSuprema.GUI
                         if (ext == ".png" || ext == ".jpg" || ext == ".jpeg")
                         {
                             AttachImageFromPath(path);
+                        }
+                        else if (VideoPipelineService.IsVideoFile(path))
+                        {
+                            Dispatcher.UIThread.Post(() => AppendToChat($"[SISTEMA]: 🎬 Avvio pipeline video per '{file.Name}'...", Avalonia.Media.Brushes.Gray));
+                            var videoResult = await _videoPipelineService.ProcessVideoAsync(
+                                path, 
+                                log => Dispatcher.UIThread.Post(() => AppendToChat(log, Avalonia.Media.Brushes.DarkGray))
+                            );
+
+                            if (videoResult.ExtractedAudioPath != null)
+                            {
+                                _pendingAudioPath = videoResult.ExtractedAudioPath;
+                            }
+                            if (videoResult.ExtractedFramesPaths.Count > 0)
+                            {
+                                _pendingVideoFrames = videoResult.ExtractedFramesPaths;
+                                _currentImagePath = _pendingVideoFrames[0];
+                                AttachImageFromPath(_currentImagePath);
+                            }
                         }
                         else
                         {
@@ -641,7 +663,7 @@ namespace OperaSuprema.GUI
                            (lensAnalisi != null && lensAnalisi.IsChecked == true) || 
                            (lensEstrai != null && lensEstrai.IsChecked == true);
 
-            if (inputTextBox == null || (string.IsNullOrWhiteSpace(inputTextBox.Text) && string.IsNullOrEmpty(_currentImagePath) && !hasLens && string.IsNullOrEmpty(_pendingAudioPath))) return;
+            if (inputTextBox == null || (string.IsNullOrWhiteSpace(inputTextBox.Text) && string.IsNullOrEmpty(_currentImagePath) && !hasLens && string.IsNullOrEmpty(_pendingAudioPath) && (_pendingVideoFrames == null || _pendingVideoFrames.Count == 0))) return;
 
             inputTextBox.IsEnabled = false;
             if (sendBtn != null) sendBtn.IsEnabled = false;
@@ -765,7 +787,15 @@ namespace OperaSuprema.GUI
                 }
                 // -------------------------------------------------------------
 
-                if (!string.IsNullOrEmpty(_currentImagePath))
+                if (_pendingVideoFrames != null && _pendingVideoFrames.Count > 0)
+                {
+                    if (string.IsNullOrWhiteSpace(userText)) userText = "Analizza in dettaglio questo video (fornito come sequenza di fotogrammi).";
+                    await InvokeVisionVideoAnalyzerAsync(userText, _pendingVideoFrames.ToList(), currentTelegramChatId);
+                    _pendingVideoFrames = null;
+                    _currentImagePath = null; 
+                    ClearImagePreview();
+                }
+                else if (!string.IsNullOrEmpty(_currentImagePath))
                 {
                     if (string.IsNullOrWhiteSpace(userText)) userText = "Analizza in dettaglio questa immagine tecnica e preparala per il Mentore.";
                     await HandleJakAssistantAsync(userText, currentTelegramChatId, useVoiceForThisChain);
@@ -2289,6 +2319,87 @@ Metti i comandi in un blocco codice ```bash. Non aggiungere altre spiegazioni.";
                 }
             }
             catch (Exception ex) { AppendToChat($"[ERRORE JAK]: {ex.Message}", Brushes.Red); }
+        }
+
+        private async Task InvokeVisionVideoAnalyzerAsync(string userPrompt, List<string> framePaths, long telegramChatId = 0)
+        {
+            AppendToChat("[SISTEMA]: 🎬 Elaborazione multimodale del video in corso (Qwen2-VL)...", Brushes.LightSkyBlue);
+            if (telegramChatId != 0) _lastTelegramRequest = userPrompt;
+            
+            var contentList = new List<Dictionary<string, object>>();
+
+            foreach (var framePath in framePaths)
+            {
+                if (File.Exists(framePath))
+                {
+                    string base64Image = ConvertImageToBase64(framePath);
+                    contentList.Add(new Dictionary<string, object>
+                    {
+                        { "type", "image_url" },
+                        { "image_url", new Dictionary<string, string> { { "url", $"data:image/jpeg;base64,{base64Image}" } } }
+                    });
+                }
+            }
+
+            contentList.Add(new Dictionary<string, object>
+            {
+                { "type", "text" },
+                { "text", userPrompt }
+            });
+
+            _jakHistory.Add(new Dictionary<string, object> { { "role", "user" }, { "content", contentList } });
+
+            var payload = new { messages = _jakHistory, temperature = 0.7, max_tokens = 2048, stream = true };
+            var request = new HttpRequestMessage(HttpMethod.Post, "http://localhost:8084/v1/chat/completions")
+            {
+                Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
+            };
+
+            try
+            {
+                var (aiMessageBlock, _) = AppendToChat("[Qwen-Video]:\n", Brushes.MediumPurple, true, "[Qwen-Video]:\n");
+                var chatPanel = this.FindControl<StackPanel>("ChatLogPanel");
+                var scrollViewer = chatPanel?.Parent as ScrollViewer;
+
+                using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, _generationCts.Token);
+                
+                if (!response.IsSuccessStatusCode)
+                {
+                    string errorContent = await response.Content.ReadAsStringAsync();
+                    Dispatcher.UIThread.Post(() => AppendToChat($"[ERRORE QWEN-VIDEO 8084]: {errorContent}", Brushes.Red));
+                    return;
+                }
+                using var stream = await response.Content.ReadAsStreamAsync();
+                using var reader = new StreamReader(stream);
+                StringBuilder fullResponse = new StringBuilder();
+
+                string? line;
+                while ((line = await reader.ReadLineAsync()) != null)
+                {
+                    if (line.StartsWith("data: ") && line.Substring(6) != "[DONE]")
+                    {
+                        var doc = JsonDocument.Parse(line.Substring(6));
+                        var delta = doc.RootElement.GetProperty("choices")[0].GetProperty("delta");
+                        if (delta.TryGetProperty("content", out var contentElement))
+                        {
+                            string chunk = contentElement.GetString() ?? "";
+                            fullResponse.Append(chunk);
+                            Dispatcher.UIThread.Post(() => { aiMessageBlock.Text += chunk; scrollViewer?.ScrollToEnd(); });
+                        }
+                    }
+                }
+
+                _jakHistory.Add(new Dictionary<string, object> { { "role", "assistant" }, { "content", fullResponse.ToString() } });
+
+                _currentSession.Messages.Add(new ChatMessage { Role = "assistant", Content = fullResponse.ToString() });
+                _ = Task.Run(async () => await _sessionManager.SaveSessionAsync(_currentSession, _currentWorkspacePath));
+                
+                if (telegramChatId != 0 && _botClient != null)
+                {
+                    await _botClient.SendMessage(chatId: telegramChatId, text: fullResponse.ToString());
+                }
+            }
+            catch (Exception ex) { AppendToChat($"[ERRORE VISION VIDEO]: {ex.Message}", Brushes.Red); }
         }
 
 	private string ConvertImageToBase64(string imagePath)
