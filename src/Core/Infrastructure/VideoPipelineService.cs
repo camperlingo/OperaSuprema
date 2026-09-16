@@ -29,7 +29,15 @@ namespace OperaSuprema.Core.Infrastructure
             
             // 1. Get duration with ffprobe
             result.DurationSeconds = await GetVideoDurationAsync(videoPath, ct);
-            logCallback?.Invoke($"[VideoPipeline] Durata rilevata: {result.DurationSeconds} secondi.");
+            if (result.DurationSeconds <= 0)
+            {
+                result.DurationSeconds = 10.0;
+                logCallback?.Invoke($"[VideoPipeline] Durata non rilevata. Fallback a {result.DurationSeconds} secondi.");
+            }
+            else
+            {
+                logCallback?.Invoke($"[VideoPipeline] Durata rilevata: {result.DurationSeconds} secondi.");
+            }
 
             // Temp dir
             string tempDir = Path.Combine(Path.GetTempPath(), $"opera_video_{Guid.NewGuid().ToString().Substring(0, 8)}");
@@ -41,7 +49,7 @@ namespace OperaSuprema.Core.Infrastructure
             {
                 FileName = "ffmpeg",
                 Arguments = $"-y -i \"{videoPath}\" -vn -acodec pcm_s16le -ar 16000 -ac 1 \"{audioPath}\"",
-                RedirectStandardOutput = true,
+                RedirectStandardOutput = false,
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true
@@ -51,6 +59,7 @@ namespace OperaSuprema.Core.Infrastructure
             {
                 if (process != null)
                 {
+                    await process.StandardError.ReadToEndAsync(ct);
                     await process.WaitForExitAsync(ct);
                     if (File.Exists(audioPath))
                     {
@@ -68,8 +77,8 @@ namespace OperaSuprema.Core.Infrastructure
                 var framesPsi = new ProcessStartInfo
                 {
                     FileName = "ffmpeg",
-                    Arguments = $"-y -i \"{videoPath}\" -vf \"fps={fps.ToString(System.Globalization.CultureInfo.InvariantCulture)},scale='min(768,iw)':-1\" -vframes {maxFrames} -q:v 3 \"{framesPattern}\"",
-                    RedirectStandardOutput = true,
+                    Arguments = $"-y -i \"{videoPath}\" -vf \"fps={fps.ToString(System.Globalization.CultureInfo.InvariantCulture)},scale='min(768,iw)':-2\" -vframes {maxFrames} -q:v 3 \"{framesPattern}\"",
+                    RedirectStandardOutput = false,
                     RedirectStandardError = true,
                     UseShellExecute = false,
                     CreateNoWindow = true
@@ -79,6 +88,7 @@ namespace OperaSuprema.Core.Infrastructure
                 {
                     if (process != null)
                     {
+                        await process.StandardError.ReadToEndAsync(ct);
                         await process.WaitForExitAsync(ct);
                         var extractedFiles = Directory.GetFiles(tempDir, "frame_*.jpg");
                         Array.Sort(extractedFiles);
