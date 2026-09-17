@@ -264,6 +264,34 @@ namespace OperaSuprema.GUI
                 gridFile.Children.Add(textBox); gridFile.Children.Add(browseBtn);
                 mainStack.Children.Add(gridFile);
 
+                // RIGA 1.5: File Mmproj (Solo per Modelli Multimodali)
+                if (model.Id == "VisionJak" || model.Id == "AudioJak")
+                {
+                    var gridMmproj = new Grid { ColumnDefinitions = new ColumnDefinitions("*, Auto"), Margin = new Avalonia.Thickness(0, 5, 0, 0) };
+                    var textMmprojBox = new TextBox { Text = model.MmprojFileName ?? "", IsReadOnly = true, PlaceholderText = "Proiettore (.gguf) opzionale...", Background = Brush.Parse("#252526") };
+                    Grid.SetColumn(textMmprojBox, 0);
+                    
+                    var browseMmprojBtn = new Button { Content = "👁️ Proiettore...", Margin = new Avalonia.Thickness(10,0,0,0), Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand) };
+                    Grid.SetColumn(browseMmprojBtn, 1);
+
+                    browseMmprojBtn.Click += async (s, e) => 
+                    {
+                        var startFolder = await StorageProvider.TryGetFolderFromPathAsync(new Uri($"file://{_tempConfig.StoragePath}"));
+                        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions 
+                        { 
+                            Title = $"Seleziona il proiettore mmproj per {model.Id}", AllowMultiple = false, SuggestedStartLocation = startFolder
+                        });
+                        if (files.Count > 0)
+                        {
+                            string selectedFile = files[0].Name;
+                            textMmprojBox.Text = selectedFile; 
+                            model.MmprojFileName = selectedFile; 
+                        }
+                    };
+                    gridMmproj.Children.Add(textMmprojBox); gridMmproj.Children.Add(browseMmprojBtn);
+                    mainStack.Children.Add(gridMmproj);
+                }
+
                 // RIGA 2: Parametri di Ottimizzazione
                 var paramsPanel = new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 15, Margin = new Avalonia.Thickness(0, 5, 0, 0) };
                 

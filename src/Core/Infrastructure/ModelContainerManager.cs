@@ -151,6 +151,7 @@ namespace OperaSuprema.Core.Infrastructure
                     if (!kvp.Value.HasExited)
                     {
                         kvp.Value.Kill();
+                        kvp.Value.WaitForExit(3000);
                         Console.WriteLine($"[STOP] {kvp.Key} terminato.");
                     }
                 }
@@ -162,7 +163,7 @@ namespace OperaSuprema.Core.Infrastructure
             Console.WriteLine("[SISTEMA] Tutti i container neurali offline.");
         }
 
-        public void KillContainer(string roleName)
+        public async Task KillContainerAsync(string roleName)
         {
             if (_activeContainers.TryGetValue(roleName, out Process? process))
             {
@@ -172,6 +173,7 @@ namespace OperaSuprema.Core.Infrastructure
                     {
                         _intentionalKills.TryAdd(roleName, true); 
                         process.Kill();
+                        await process.WaitForExitAsync();
                         Console.WriteLine($"[STOP] {roleName} smontato a caldo dalla VRAM.");
                     }
                 }
