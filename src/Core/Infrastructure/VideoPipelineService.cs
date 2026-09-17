@@ -79,7 +79,7 @@ namespace OperaSuprema.Core.Infrastructure
                 var framesPsi = new ProcessStartInfo
                 {
                     FileName = "ffmpeg",
-                    Arguments = $"-y -i \"{videoPath}\" -vf \"fps={fps.ToString(System.Globalization.CultureInfo.InvariantCulture)},scale='min(768,iw)':-2\" -vframes {maxFrames} -q:v 3 \"{framesPattern}\"",
+                    Arguments = $"-y -i \"{videoPath}\" -vf \"fps={fps.ToString(System.Globalization.CultureInfo.InvariantCulture)},scale='if(gt(iw,ih),min(768,iw),-2)':'if(gt(iw,ih),-2,min(768,ih))'\" -vframes {maxFrames} -q:v 3 \"{framesPattern}\"",
                     RedirectStandardOutput = false,
                     RedirectStandardError = true,
                     UseShellExecute = false,
