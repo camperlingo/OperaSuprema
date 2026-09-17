@@ -178,7 +178,12 @@ namespace OperaSuprema.Core.Infrastructure
                     }
                 }
                 catch { }
-                _isRecovering.TryRemove(roleName, out _); 
+                finally
+                {
+                    process.Dispose();
+                    _activeContainers.TryRemove(roleName, out _);
+                    _isRecovering.TryRemove(roleName, out _);
+                }
             }
         }
     }
