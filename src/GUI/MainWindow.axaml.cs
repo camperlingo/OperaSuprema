@@ -916,7 +916,13 @@ namespace OperaSuprema.GUI
                 string base64Audio = Convert.ToBase64String(audioBytes);
                 string mimeType = audioPath.EndsWith(".mp3") ? "audio/mp3" : (audioPath.EndsWith(".ogg") ? "audio/ogg" : "audio/wav");
 
-                contentList.Add(new { type = "audio_url", audio_url = new { url = $"data:{mimeType};base64,{base64Audio}" } });
+                contentList.Add(new {
+                    type = "input_audio",
+                    input_audio = new {
+                        data = base64Audio,
+                        format = "wav"
+                    }
+                });
 
                 payloadHistory.Add(new Dictionary<string, object>
                 {
@@ -2755,11 +2761,11 @@ Metti i comandi in un blocco codice ```bash. Non aggiungere altre spiegazioni.";
                 foreach (var model in modelsToLoad)
                 {
                     // --- SMART BOOT ARCHITECTURE ---
-                    // Se lo Smart Hot-Swapping è attivo, saltiamo il Coder al boot. 
+                    // Se lo Smart Hot-Swapping è attivo, saltiamo il Coder e l'AudioJak al boot. 
                     // Se l'operatore lo ha disattivato (perché ha 112GB di VRAM e vuole tutto pronto), lo carichiamo subito!
-                    if (model.Id == "Coder_Principale" && _configManager.CurrentConfig.HotSwapEnabled) 
+                    if ((model.Id == "Coder_Principale" || model.Id == "AudioJak") && _configManager.CurrentConfig.HotSwapEnabled) 
                     {
-                        Console.WriteLine($"[SISTEMA] {model.Id} ignorato al boot (Smart Hot-Swapping attivo).");
+                        Console.WriteLine($"[SISTEMA] {model.Id} posticipato: verrà caricato on-demand alla prima richiesta.");
                         continue;
                     }
                     // ---------------------------------------------------------------------------------
