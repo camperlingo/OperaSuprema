@@ -74,12 +74,12 @@ namespace OperaSuprema.Core.Infrastructure
             // 3. Extract frames
             if (result.DurationSeconds > 0)
             {
-                double fps = Math.Max(0.1, (double)maxFrames / result.DurationSeconds);
+                double frameInterval = Math.Max(1.0, result.DurationSeconds / maxFrames);
                 string framesPattern = Path.Combine(tempDir, "frame_%03d.jpg");
                 var framesPsi = new ProcessStartInfo
                 {
                     FileName = "ffmpeg",
-                    Arguments = $"-y -i \"{videoPath}\" -vf \"fps={fps.ToString(System.Globalization.CultureInfo.InvariantCulture)},scale='if(gt(iw,ih),min(768,iw),-2)':'if(gt(iw,ih),-2,min(768,ih))'\" -vframes {maxFrames} -q:v 3 \"{framesPattern}\"",
+                    Arguments = $"-y -i \"{videoPath}\" -vf \"fps=1/{frameInterval.ToString("F4", System.Globalization.CultureInfo.InvariantCulture)},scale='if(gt(iw,ih),min(768,iw),-2)':'if(gt(iw,ih),-2,min(768,ih))'\" -vframes {maxFrames} -q:v 3 \"{framesPattern}\"",
                     RedirectStandardOutput = false,
                     RedirectStandardError = true,
                     UseShellExecute = false,
@@ -109,7 +109,7 @@ namespace OperaSuprema.Core.Infrastructure
             return result;
         }
 
-        private async Task<double> GetVideoDurationAsync(string videoPath, CancellationToken ct)
+        public async Task<double> GetVideoDurationAsync(string videoPath, CancellationToken ct = default)
         {
             var psi = new ProcessStartInfo
             {

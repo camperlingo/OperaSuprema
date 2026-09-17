@@ -65,6 +65,7 @@ namespace OperaSuprema.GUI
 	private readonly AutonomousCrawler _crawler;
         private bool _isRecording = false;
         private System.Diagnostics.Process? _audioProcess;
+        private System.Diagnostics.Process? _whisperProcess;
         private readonly string _audioTempPath = Path.Combine(Path.GetTempPath(), "opera_dictation.wav");
         private int _runtimeCrashCount = 0; 
         private CancellationTokenSource _generationCts = new();
@@ -320,7 +321,12 @@ namespace OperaSuprema.GUI
                         fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("audio/wav");
                         form.Add(fileContent, "file", "dictation.wav");
                         
-                        var response = await _httpClient.PostAsync("http://localhost:8080/inference", form);
+                        string endpointUrl = _configManager.CurrentConfig.SttEndpointUrl;
+                        if (string.IsNullOrWhiteSpace(endpointUrl)) endpointUrl = "http://localhost:8080/inference";
+                        
+                        await EnsureWhisperServerIsRunningAsync(endpointUrl);
+                        
+                        var response = await _httpClient.PostAsync(endpointUrl, form);
                         response.EnsureSuccessStatusCode();
                         
                         var jsonResult = await response.Content.ReadAsStringAsync();
@@ -729,6 +735,15 @@ namespace OperaSuprema.GUI
                             }
                         }
                     }
+                    else
+                    {
+                        double audioDuration = await _videoPipelineService.GetVideoDurationAsync(_sessionAudioPath!);
+                        if (audioDuration > 30.0)
+                        {
+                            audioPathToProcess = await _videoPipelineService.SliceAudioAsync(_sessionAudioPath!, 0, 20.0, _generationCts.Token);
+                            AppendToChat($"[SISTEMA]: 🛡️ Traccia troppo lunga ({audioDuration}s). Applicato guardrail temporale per salvaguardare la VRAM: slicing automatico ai primi 20 secondi.", Avalonia.Media.Brushes.Orange);
+                        }
+                    }
 
                     AppendToChat($"[EMANUELE]: {userText}", Avalonia.Media.Brushes.White);
                     string aUserMsgId = Guid.NewGuid().ToString();
@@ -983,6 +998,38 @@ namespace OperaSuprema.GUI
             }
         }
 
+        private async Task EnsureWhisperServerIsRunningAsync(string endpointUrl)
+        {
+            if (endpointUrl.Contains("localhost") || endpointUrl.Contains("127.0.0.1"))
+            {
+                try
+                {
+                    string healthUrl = endpointUrl.Replace("/inference", "/health");
+                    using var pingClient = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(2) };
+                    await pingClient.GetAsync(healthUrl);
+                }
+                catch
+                {
+                    Dispatcher.UIThread.Post(() => AppendToChat("[SISTEMA]: Whisper Server offline. Avvio automatico in corso...", Avalonia.Media.Brushes.Gray));
+                    
+                    string whisperBin = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "ai_models/whisper.cpp/build/bin/whisper-server");
+                    var psi = new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = whisperBin,
+                        Arguments = "-m /mnt/AI_Storage/Modelli_GGUF/Whisper-Turbo-Platinum-Q8_0.bin --port 8080 -l auto",
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    };
+                    _whisperProcess = System.Diagnostics.Process.Start(psi);
+                    
+                    if (_whisperProcess != null)
+                    {
+                        await Task.Delay(3000); // Wait for boot
+                    }
+                }
+            }
+        }
+
         private async Task InvokeSpeechToTextAsync(string audioPath, long telegramChatId)
         {
             string engineType = _configManager.CurrentConfig.SttEngineType;
@@ -999,6 +1046,8 @@ namespace OperaSuprema.GUI
                     
                     string endpointUrl = _configManager.CurrentConfig.SttEndpointUrl;
                     if (string.IsNullOrWhiteSpace(endpointUrl)) endpointUrl = "http://localhost:8080/inference";
+                    
+                    await EnsureWhisperServerIsRunningAsync(endpointUrl);
                     
                     var response = await _httpClient.PostAsync(endpointUrl, form);
                     response.EnsureSuccessStatusCode();
@@ -2882,6 +2931,14 @@ Metti i comandi in un blocco codice ```bash. Non aggiungere altre spiegazioni.";
             foreach (var proc in System.Diagnostics.Process.GetProcessesByName("llama-server"))
             {
                 try { proc.Kill(); } catch { }
+            }
+            foreach (var proc in System.Diagnostics.Process.GetProcessesByName("whisper-server"))
+            {
+                try { proc.Kill(); } catch { }
+            }
+            if (_whisperProcess != null && !_whisperProcess.HasExited)
+            {
+                try { _whisperProcess.Kill(); } catch { }
             }
         }
 
