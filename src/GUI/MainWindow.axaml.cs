@@ -979,7 +979,7 @@ namespace OperaSuprema.GUI
             }
             finally
             {
-                _containerManager.KillContainer("AudioJak");
+                await _containerManager.KillContainerAsync("AudioJak");
             }
         }
 
@@ -1023,7 +1023,6 @@ namespace OperaSuprema.GUI
                         throw new Exception($"Percorso binario locale non impostato per {engineType}. Controlla Hub Impostazioni.");
                     }
 
-                    var tcs = new TaskCompletionSource<string>();
                     var process = new System.Diagnostics.Process
                     {
                         StartInfo = new System.Diagnostics.ProcessStartInfo
@@ -1038,24 +1037,23 @@ namespace OperaSuprema.GUI
                         EnableRaisingEvents = true
                     };
 
-                    process.Exited += async (s, e) =>
-                    {
-                        string output = await process.StandardOutput.ReadToEndAsync();
-                        string err = await process.StandardError.ReadToEndAsync();
-                        
-                        if (process.ExitCode != 0)
-                        {
-                            tcs.SetException(new Exception(err));
-                        }
-                        else
-                        {
-                            tcs.SetResult(output.Trim());
-                        }
-                        process.Dispose();
-                    };
-
                     process.Start();
-                    string transcript = await tcs.Task;
+
+                    var stdoutTask = process.StandardOutput.ReadToEndAsync();
+                    var stderrTask = process.StandardError.ReadToEndAsync();
+                    await Task.WhenAll(stdoutTask, stderrTask);
+                    string output = stdoutTask.Result;
+                    string err = stderrTask.Result;
+
+                    await process.WaitForExitAsync();
+
+                    if (process.ExitCode != 0)
+                    {
+                        throw new Exception(err);
+                    }
+
+                    string transcript = output.Trim();
+                    process.Dispose();
 
                     if (!string.IsNullOrEmpty(transcript))
                     {
@@ -2761,11 +2759,11 @@ Metti i comandi in un blocco codice ```bash. Non aggiungere altre spiegazioni.";
                 foreach (var model in modelsToLoad)
                 {
                     // --- SMART BOOT ARCHITECTURE ---
-                    // Se lo Smart Hot-Swapping è attivo, saltiamo il Coder e l'AudioJak al boot. 
-                    // Se l'operatore lo ha disattivato (perché ha 112GB di VRAM e vuole tutto pronto), lo carichiamo subito!
-                    if ((model.Id == "Coder_Principale" || model.Id == "AudioJak") && _configManager.CurrentConfig.HotSwapEnabled) 
+                    // Se lo Smart Hot-Swapping è attivo, saltiamo il Coder. AudioJak lo saltiamo sempre al boot.
+                    // Se l'operatore disattiva l'hot swap, il Coder verrà caricato subito.
+                    if (model.Id == "AudioJak" || (model.Id == "Coder_Principale" && _configManager.CurrentConfig.HotSwapEnabled))
                     {
-                        Console.WriteLine($"[SISTEMA] {model.Id} posticipato: verrà caricato on-demand alla prima richiesta.");
+                        Console.WriteLine($"[SISTEMA] {model.Id} posticipato: caricamento on-demand.");
                         continue;
                     }
                     // ---------------------------------------------------------------------------------
@@ -4009,8 +4007,8 @@ REGOLA SUPREMA DI FORMATTAZIONE: Per OGNI file, usa TASSATIVAMENTE questo format
             // 3. Esecuzione del Kill selettivo (se necessario)
             if (hotSwapEnabled && !string.IsNullOrEmpty(modelToKill))
             {
-                _containerManager.KillContainer(modelToKill);
-                await Task.Delay(2000); // Attesa fisica per lo svuotamento dei buffer della VRAM
+                await _containerManager.KillContainerAsync(modelToKill);
+                await Task.Delay(500); // Attesa fisica per lo svuotamento dei buffer della VRAM
             }
 
             // 4. Montaggio del nuovo Modello
@@ -4020,12 +4018,21 @@ REGOLA SUPREMA DI FORMATTAZIONE: Per OGNI file, usa TASSATIVAMENTE questo format
             if (modelConfig != null)
             {
                 string storagePath = _configManager.CurrentConfig.StoragePath;
+
+                string mmprojFullPath = "";
+                if (!string.IsNullOrWhiteSpace(modelConfig.MmprojFileName))
+                {
+                    mmprojFullPath = Path.IsPathRooted(modelConfig.MmprojFileName)
+                        ? modelConfig.MmprojFileName
+                        : Path.Combine(storagePath, modelConfig.MmprojFileName);
+                }
+
                 await _containerManager.StartContainerAsync(
                     modelConfig.Id, 
                     $"{storagePath}/{modelConfig.FileName}", 
                     modelConfig.Port, 
                     modelConfig.ContextSize,
-                    modelConfig.MmprojFileName ?? "",
+                    mmprojFullPath,
                     modelConfig.UseFlashAttention,
                     modelConfig.KvCacheType,
                     _configManager.CurrentConfig.LlamaServerPath
