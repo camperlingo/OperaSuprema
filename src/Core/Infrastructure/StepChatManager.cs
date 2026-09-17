@@ -52,7 +52,7 @@ namespace OperaSuprema.Core.Infrastructure
                         }
                     };
 
-                    var requestContent = new StringContent(JsonSerializer.Serialize(createPayload), Encoding.UTF8, "application/json");
+                    var requestContent = System.Net.Http.Json.JsonContent.Create(createPayload);
                     var createResponse = await _httpClient.PutAsync($"{QdrantBaseUrl}/collections/{ChatCollectionName}", requestContent);
                     
                     if (createResponse.IsSuccessStatusCode)
@@ -116,7 +116,7 @@ namespace OperaSuprema.Core.Infrastructure
                 }
             };
 
-            var requestContent = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+            var requestContent = System.Net.Http.Json.JsonContent.Create(payload);
             var response = await _httpClient.PutAsync($"{QdrantBaseUrl}/collections/{ChatCollectionName}/points", requestContent);
             
             if (response.IsSuccessStatusCode)
@@ -149,7 +149,7 @@ namespace OperaSuprema.Core.Infrastructure
                 }
             };
 
-            var requestContent = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+            var requestContent = System.Net.Http.Json.JsonContent.Create(payload);
             var response = await _httpClient.PostAsync($"{QdrantBaseUrl}/collections/{ChatCollectionName}/points/search", requestContent);
 
             if (response.IsSuccessStatusCode)
@@ -198,7 +198,7 @@ namespace OperaSuprema.Core.Infrastructure
 
             var request = new HttpRequestMessage(HttpMethod.Post, $"{QdrantBaseUrl}/collections/{ChatCollectionName}/points/delete")
             {
-                Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
+                Content = System.Net.Http.Json.JsonContent.Create(payload)
             };
 
             var response = await _httpClient.SendAsync(request);

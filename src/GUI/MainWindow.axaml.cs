@@ -58,6 +58,7 @@ namespace OperaSuprema.GUI
         private List<VideoFrameInfo>? _sessionFrames = null;
 
         private readonly object _historyLock = new();
+        private int _compileEscalationCount = 0;
         private readonly List<Dictionary<string, string>> _chatHistory = new();
         private readonly List<Dictionary<string, object>> _jakHistory = new();
         private readonly VectorMemoryManager _vectorMemory = new VectorMemoryManager();
@@ -893,7 +894,7 @@ namespace OperaSuprema.GUI
 
             var request = new HttpRequestMessage(HttpMethod.Post, "http://localhost:8081/v1/chat/completions")
             {
-                Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
+                Content = System.Net.Http.Json.JsonContent.Create(payload)
             };
 
             try
@@ -970,7 +971,7 @@ namespace OperaSuprema.GUI
 
                 var request = new HttpRequestMessage(HttpMethod.Post, "http://localhost:8085/v1/chat/completions")
                 {
-                    Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
+                    Content = System.Net.Http.Json.JsonContent.Create(payload)
                 };
                 request.Headers.Add("Authorization", "Bearer opera-suprema");
 
@@ -1391,7 +1392,7 @@ namespace OperaSuprema.GUI
 
             var request = new HttpRequestMessage(HttpMethod.Post, "http://localhost:8081/v1/chat/completions")
             {
-                Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
+                Content = System.Net.Http.Json.JsonContent.Create(payload)
             };
 
             // --- INIZIO PATCH: RESET DEL TIMEOUT PER OGNI INFERENZA (5 MINUTI) ---
@@ -1878,7 +1879,7 @@ Prima di OGNI blocco di codice corretto, DEVI usare TASSATIVAMENTE il formato:
             };
 
             var request = new HttpRequestMessage(HttpMethod.Post, url) {
-                Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
+                Content = System.Net.Http.Json.JsonContent.Create(payload)
             };
 
             StringBuilder criticFullResponse = new StringBuilder();
@@ -2450,7 +2451,7 @@ Metti i comandi in un blocco codice ```bash. Non aggiungere altre spiegazioni.";
             // Collegato al demone Vision sulla 8084
             var request = new HttpRequestMessage(HttpMethod.Post, "http://localhost:8084/v1/chat/completions")
             {
-                Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
+                Content = System.Net.Http.Json.JsonContent.Create(payload)
             };
 
             try
@@ -2559,7 +2560,7 @@ Metti i comandi in un blocco codice ```bash. Non aggiungere altre spiegazioni.";
             var payload = new { messages = _jakHistory, temperature = 0.7, max_tokens = 2048, stream = true };
             var request = new HttpRequestMessage(HttpMethod.Post, "http://localhost:8084/v1/chat/completions")
             {
-                Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
+                Content = System.Net.Http.Json.JsonContent.Create(payload)
             };
 
             try
@@ -2897,7 +2898,7 @@ Metti i comandi in un blocco codice ```bash. Non aggiungere altre spiegazioni.";
             };
 
             var request = new HttpRequestMessage(HttpMethod.Post, "http://localhost:8081/v1/chat/completions") {
-                Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
+                Content = System.Net.Http.Json.JsonContent.Create(payload)
             };
 
             try
@@ -3081,7 +3082,7 @@ Metti i comandi in un blocco codice ```bash. Non aggiungere altre spiegazioni.";
                 
                 var payload = new { messages = tempHistory, temperature = 0.3, max_tokens = 15 };
                 var request = new HttpRequestMessage(HttpMethod.Post, "http://localhost:8081/v1/chat/completions") {
-                    Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
+                    Content = System.Net.Http.Json.JsonContent.Create(payload)
                 };
 
                 var response = await _httpClient.SendAsync(request);
@@ -3173,7 +3174,7 @@ Metti i comandi in un blocco codice ```bash. Non aggiungere altre spiegazioni.";
                     
                     var payload = new { messages = tempHistory, temperature = 0.3, max_tokens = 50 };
                     var request = new HttpRequestMessage(HttpMethod.Post, "http://localhost:8081/v1/chat/completions") {
-                        Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
+                        Content = System.Net.Http.Json.JsonContent.Create(payload)
                     };
 
                     try {
@@ -3460,6 +3461,7 @@ Attendi sempre la decisione dell'utente prima di procedere.
                 if (exitCode == 0)
                 {
                     compilationSuccess = true;
+                    _compileEscalationCount = 0;
                     Dispatcher.UIThread.Post(() => AppendToChat($"[SISTEMA]: ✅ ZERO ERRORI! Compilazione superata con successo.", Avalonia.Media.Brushes.SpringGreen));
                     
                     // --- SOSTITUZIONE: AVVIO TRAMITE SUPERVISORE ---
@@ -3593,6 +3595,14 @@ Per OGNI file che modifichi, DEVI TASSATIVAMENTE usare questo esatto formato, ap
 
             if (!compilationSuccess)
             {
+                _compileEscalationCount++;
+                if (_compileEscalationCount >= 2)
+                {
+                    Dispatcher.UIThread.Post(() => AppendToChat("[SISTEMA]: 🛑 Rilevato stallo logico ripetuto. Automazione sospesa per evitare loop infiniti. Richiesto intervento umano.", Avalonia.Media.Brushes.Red));
+                    _compileEscalationCount = 0;
+                    return;
+                }
+
                 Dispatcher.UIThread.Post(() => AppendToChat($"[SISTEMA]: 🚨 Auto-Guarigione (Livello 1) fallita. Innesco ESCALATION al Master Mentor (Livello 2)...", Avalonia.Media.Brushes.OrangeRed));
 
                 // Prepariamo il Dossier per l'Architetto (VERSIONE BLINDATA E UNIVERSALE)

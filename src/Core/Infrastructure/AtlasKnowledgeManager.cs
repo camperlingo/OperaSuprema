@@ -48,7 +48,7 @@ namespace OperaSuprema.Core.Infrastructure
                         }
                     };
 
-                    var requestContent = new StringContent(JsonSerializer.Serialize(createPayload), Encoding.UTF8, "application/json");
+                    var requestContent = System.Net.Http.Json.JsonContent.Create(createPayload);
                     var createResponse = await _httpClient.PutAsync($"{QdrantBaseUrl}/collections/{CollectionName}", requestContent);
                     
                     if (createResponse.IsSuccessStatusCode)
@@ -84,7 +84,7 @@ namespace OperaSuprema.Core.Infrastructure
 
                 var request = new HttpRequestMessage(HttpMethod.Post, "http://localhost:8081/v1/chat/completions")
                 {
-                    Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
+                    Content = System.Net.Http.Json.JsonContent.Create(payload)
                 };
 
                 var response = await _httpClient.SendAsync(request);
@@ -184,7 +184,7 @@ namespace OperaSuprema.Core.Infrastructure
                     }
                 };
 
-                var requestContent = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+                var requestContent = System.Net.Http.Json.JsonContent.Create(payload);
                 await _httpClient.PutAsync($"{QdrantBaseUrl}/collections/{CollectionName}/points?wait=true", requestContent);
 
                 if (progress != null)
@@ -221,7 +221,7 @@ namespace OperaSuprema.Core.Infrastructure
 
                     if (offset != null) payload["offset"] = offset;
 
-                    var requestContent = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+                    var requestContent = System.Net.Http.Json.JsonContent.Create(payload);
                     var response = await _httpClient.PostAsync($"{QdrantBaseUrl}/collections/{CollectionName}/points/scroll", requestContent);
 
                     if (response.IsSuccessStatusCode)
@@ -288,7 +288,7 @@ namespace OperaSuprema.Core.Infrastructure
                     }
                 };
 
-                var requestContent = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+                var requestContent = System.Net.Http.Json.JsonContent.Create(payload);
                 await _httpClient.PostAsync($"{QdrantBaseUrl}/collections/{CollectionName}/points/delete", requestContent);
                 Console.WriteLine($"[ATLAS] Pruning della disciplina {discipline} completato.");
             }
