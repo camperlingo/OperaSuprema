@@ -58,8 +58,10 @@
                     <Grid ColumnDefinitions="Auto, *, Auto">
                         <TextBlock Grid.Column="0" Text="Modello/Eseguibile:" VerticalAlignment="Center" Foreground="Gray" Margin="0,0,10,0"/>
                         <TextBox Grid.Column="1" Name="SttModelPathTextBox" IsReadOnly="True" PlaceholderText="Opzionale per MMS/DeepSpeech/Whisper CLI..." Background="#1E1E1E"/>
-                        <Button Grid.Column="2" Name="BtnBrowseSttModel" Content="📁 Sfoglia..." Margin="10,0,0,0" Cursor="Hand" Background="#3F3F46" Foreground="White"/>
+                        <Button Grid.Column="2" Name="BtnBrowseSttModel" Content="📁 Sfoglia/Importa..." Margin="10,0,0,0" Cursor="Hand" Background="#3F3F46" Foreground="White"/>
                     </Grid>
+                    
+                    <TextBlock Name="SttImportFeedback" Foreground="SpringGreen" FontWeight="Bold" IsVisible="False" HorizontalAlignment="Right"/>
                 </StackPanel>
             </Border>
             

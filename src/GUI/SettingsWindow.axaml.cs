@@ -104,15 +104,36 @@ namespace OperaSuprema.GUI
             }
 
             // --- NUOVO: CARICA TRASCRIZIONE AUDIO / STT ---
+            string sttVaultPath = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "ai_models/stt");
+            if (!System.IO.Directory.Exists(sttVaultPath))
+            {
+                System.IO.Directory.CreateDirectory(sttVaultPath);
+            }
+
             var sttEngineComboBox = this.FindControl<ComboBox>("SttEngineComboBox");
             if (sttEngineComboBox != null)
             {
+                bool hasLocalModel = !string.IsNullOrWhiteSpace(_tempConfig.SttModelOrBinaryPath) && System.IO.File.Exists(_tempConfig.SttModelOrBinaryPath);
+
                 foreach (var item in sttEngineComboBox.Items)
                 {
-                    if (item is ComboBoxItem cbItem && cbItem.Content?.ToString() == _tempConfig.SttEngineType)
+                    if (item is ComboBoxItem cbItem)
                     {
-                        sttEngineComboBox.SelectedItem = cbItem;
-                        break;
+                        string baseName = cbItem.Content?.ToString()?.Replace(" [Pronto]", "")?.Replace(" [Non installato]", "") ?? "";
+                        
+                        if (baseName == "Whisper" || baseName == "Custom HTTP")
+                        {
+                            cbItem.Content = $"{baseName} [Pronto]";
+                        }
+                        else
+                        {
+                            cbItem.Content = hasLocalModel ? $"{baseName} [Pronto]" : $"{baseName} [Non installato]";
+                        }
+
+                        if (baseName == _tempConfig.SttEngineType)
+                        {
+                            sttEngineComboBox.SelectedItem = cbItem;
+                        }
                     }
                 }
             }
@@ -130,6 +151,8 @@ namespace OperaSuprema.GUI
             }
 
             var btnBrowseSttModel = this.FindControl<Button>("BtnBrowseSttModel");
+            var sttFeedback = this.FindControl<TextBlock>("SttImportFeedback");
+
             if (btnBrowseSttModel != null && sttModelPathTextBox != null)
             {
                 btnBrowseSttModel.Click += async (s, e) =>
@@ -141,9 +164,53 @@ namespace OperaSuprema.GUI
                     });
                     if (files.Count > 0)
                     {
-                        string selectedPath = files[0].Path.LocalPath;
-                        sttModelPathTextBox.Text = selectedPath;
-                        _tempConfig.SttModelOrBinaryPath = selectedPath;
+                        string sourcePath = files[0].Path.LocalPath;
+                        string fileName = System.IO.Path.GetFileName(sourcePath);
+                        string destPath = System.IO.Path.Combine(sttVaultPath, fileName);
+                        
+                        try
+                        {
+                            if (sourcePath != destPath)
+                            {
+                                System.IO.File.Copy(sourcePath, destPath, true);
+                            }
+                            sttModelPathTextBox.Text = destPath;
+                            _tempConfig.SttModelOrBinaryPath = destPath;
+                            
+                            if (sttFeedback != null)
+                            {
+                                sttFeedback.Foreground = Avalonia.Media.Brushes.SpringGreen;
+                                sttFeedback.Text = "Modello importato con successo";
+                                sttFeedback.IsVisible = true;
+                                _ = System.Threading.Tasks.Task.Delay(3000).ContinueWith(_ => Avalonia.Threading.Dispatcher.UIThread.Post(() => sttFeedback.IsVisible = false));
+                            }
+                            
+                            // Aggiorna gli indicatori se non è Whisper o Custom HTTP
+                            if (sttEngineComboBox != null)
+                            {
+                                foreach (var item in sttEngineComboBox.Items)
+                                {
+                                    if (item is ComboBoxItem cbItem)
+                                    {
+                                        string baseName = cbItem.Content?.ToString()?.Replace(" [Pronto]", "")?.Replace(" [Non installato]", "") ?? "";
+                                        if (baseName != "Whisper" && baseName != "Custom HTTP")
+                                        {
+                                            cbItem.Content = $"{baseName} [Pronto]";
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        catch
+                        {
+                            if (sttFeedback != null)
+                            {
+                                sttFeedback.Foreground = Avalonia.Media.Brushes.Red;
+                                sttFeedback.Text = "Errore durante l'importazione!";
+                                sttFeedback.IsVisible = true;
+                                _ = System.Threading.Tasks.Task.Delay(3000).ContinueWith(_ => Avalonia.Threading.Dispatcher.UIThread.Post(() => sttFeedback.IsVisible = false));
+                            }
+                        }
                     }
                 };
             }
@@ -283,7 +350,8 @@ namespace OperaSuprema.GUI
             var sttEngineComboBox = this.FindControl<ComboBox>("SttEngineComboBox");
             if (sttEngineComboBox != null && sttEngineComboBox.SelectedItem is ComboBoxItem selectedEngine)
             {
-                _tempConfig.SttEngineType = selectedEngine.Content?.ToString() ?? "Whisper";
+                string rawContent = selectedEngine.Content?.ToString() ?? "Whisper";
+                _tempConfig.SttEngineType = rawContent.Replace(" [Pronto]", "").Replace(" [Non installato]", "");
             }
 
             var sttEndpointTextBox = this.FindControl<TextBox>("SttEndpointTextBox");
