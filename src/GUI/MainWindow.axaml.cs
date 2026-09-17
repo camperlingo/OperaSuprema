@@ -57,6 +57,7 @@ namespace OperaSuprema.GUI
         private readonly VideoPipelineService _videoPipelineService = new();
         private List<VideoFrameInfo>? _sessionFrames = null;
 
+        private readonly object _historyLock = new();
         private readonly List<Dictionary<string, string>> _chatHistory = new();
         private readonly List<Dictionary<string, object>> _jakHistory = new();
         private readonly VectorMemoryManager _vectorMemory = new VectorMemoryManager();
@@ -298,6 +299,12 @@ namespace OperaSuprema.GUI
                     CreateNoWindow = true
                 };
                 _audioProcess = System.Diagnostics.Process.Start(psi);
+                if (_audioProcess != null)
+                {
+                    _generationCts.Token.Register(() => {
+                        try { if (_audioProcess != null && !_audioProcess.HasExited) _audioProcess.Kill(true); } catch { }
+                    });
+                }
             }
             else
             {
@@ -710,15 +717,23 @@ namespace OperaSuprema.GUI
                 _lastTelegramChatId = 0; 
 
                 string textLower = userText.ToLower();
-                bool isAudioRequest = !string.IsNullOrEmpty(_sessionAudioPath) && 
-                    (userText.Trim() == "1" || userText.Trim() == "2" || userText.Trim() == "3" || userText.Trim() == "4" ||
-                     textLower.Contains("trascrivi") || textLower.Contains("sbobina") || textLower.Contains("testo parlato") ||
-                     textLower.Contains("rumori") || textLower.Contains("tono") || textLower.Contains("emozioni") || textLower.Contains("musica") || textLower.Contains("audio"));
+                
+                bool isSynthesisIntent = textLower.Contains("dossier") || textLower.Contains("sintetizza") || textLower.Contains("riassumi") || 
+                                         textLower.Contains("spiega") || textLower.Contains("relazione") || textLower.Contains("collega") || 
+                                         textLower.Contains("incrocia");
+
+                var timeMatch = System.Text.RegularExpressions.Regex.Match(textLower, @"tra\s+(\d{1,2}:\d{2}(?:\.\d+)?)\s+e\s+(\d{1,2}:\d{2}(?:\.\d+)?)");
+                bool isAudioAnalysisRegex = System.Text.RegularExpressions.Regex.IsMatch(textLower, @"^analizza (l')?audio");
+                bool isAudioJakTrigger = userText.Trim() == "1" || userText.Trim() == "2" || userText.Trim() == "3" || userText.Trim() == "4" || isAudioAnalysisRegex || timeMatch.Success;
+                
+                int wordCount = userText.Split(new[] { ' ', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).Length;
+                bool isWhisperTrigger = wordCount < 7 && (textLower.Contains("trascrivi") || textLower.Contains("sbobina") || textLower.Contains("testo parlato"));
+
+                bool isAudioRequest = !string.IsNullOrEmpty(_sessionAudioPath) && !isSynthesisIntent && (isAudioJakTrigger || isWhisperTrigger);
 
                 if (isAudioRequest)
                 {
                     string audioPathToProcess = _sessionAudioPath!;
-                    var timeMatch = System.Text.RegularExpressions.Regex.Match(textLower, @"tra\s+(\d{2}:\d{2}(?:\.\d+)?)\s+e\s+(\d{2}:\d{2}(?:\.\d+)?)");
                     if (timeMatch.Success)
                     {
                         string startStr = timeMatch.Groups[1].Value;
@@ -749,11 +764,11 @@ namespace OperaSuprema.GUI
                     string aUserMsgId = Guid.NewGuid().ToString();
                     int aUserTokens = userText.Length / 4;
                     await _ledgerService.InsertChatMessageAsync(aUserMsgId, _currentSession.Id, "user", userText, aUserTokens);
-                    _chatHistory.Add(new Dictionary<string, string> { { "role", "user" }, { "content", userText } });
-                    _currentSession.Messages.Add(new OperaSuprema.Core.Infrastructure.ChatMessage { Role = "user", Content = userText });
+                    lock (_historyLock) { _chatHistory.Add(new Dictionary<string, string> { { "role", "user" }, { "content", userText } }); }
+                    lock (_historyLock) { _currentSession.Messages.Add(new OperaSuprema.Core.Infrastructure.ChatMessage { Role = "user", Content = userText }); }
                     await _sessionManager.SaveSessionAsync(_currentSession, _currentWorkspacePath);
 
-                    if (textLower.Contains("trascrivi") || textLower.Contains("sbobina") || textLower.Contains("testo parlato"))
+                    if (isWhisperTrigger)
                     {
                         await InvokeSpeechToTextAsync(audioPathToProcess, currentTelegramChatId);
                     }
@@ -971,8 +986,8 @@ namespace OperaSuprema.GUI
                         {
                             Dispatcher.UIThread.Post(() => AppendToChat($"[QWEN AUDIO]:\n{msg.Trim()}", Avalonia.Media.Brushes.MediumPurple));
                             
-                            _chatHistory.Add(new Dictionary<string, string> { { "role", "assistant" }, { "content", msg } });
-                            _currentSession.Messages.Add(new OperaSuprema.Core.Infrastructure.ChatMessage { Role = "assistant", Content = msg });
+                            lock (_historyLock) { _chatHistory.Add(new Dictionary<string, string> { { "role", "assistant" }, { "content", msg } }); }
+                            lock (_historyLock) { _currentSession.Messages.Add(new OperaSuprema.Core.Infrastructure.ChatMessage { Role = "assistant", Content = msg }); }
                             
                             string audioBotMsgId = Guid.NewGuid().ToString();
                             int audioBotTokens = msg.Length / 4;
@@ -1059,8 +1074,8 @@ namespace OperaSuprema.GUI
                     if (!string.IsNullOrEmpty(transcript))
                     {
                         AppendToChat($"[{engineType.ToUpper()}]:\n{transcript}", Avalonia.Media.Brushes.Yellow);
-                        _chatHistory.Add(new Dictionary<string, string> { { "role", "assistant" }, { "content", transcript } });
-                        _currentSession.Messages.Add(new OperaSuprema.Core.Infrastructure.ChatMessage { Role = "assistant", Content = transcript });
+                        lock (_historyLock) { _chatHistory.Add(new Dictionary<string, string> { { "role", "assistant" }, { "content", transcript } }); }
+                        lock (_historyLock) { _currentSession.Messages.Add(new OperaSuprema.Core.Infrastructure.ChatMessage { Role = "assistant", Content = transcript }); }
                         await _sessionManager.SaveSessionAsync(_currentSession, _currentWorkspacePath);
                     }
                 }
@@ -1108,8 +1123,8 @@ namespace OperaSuprema.GUI
                     {
                         Avalonia.Threading.Dispatcher.UIThread.Post(async () => {
                             AppendToChat($"[{engineType.ToUpper()}]:\n{transcript}", Avalonia.Media.Brushes.Yellow);
-                            _chatHistory.Add(new Dictionary<string, string> { { "role", "assistant" }, { "content", transcript } });
-                            _currentSession.Messages.Add(new OperaSuprema.Core.Infrastructure.ChatMessage { Role = "assistant", Content = transcript });
+                            lock (_historyLock) { _chatHistory.Add(new Dictionary<string, string> { { "role", "assistant" }, { "content", transcript } }); }
+                            lock (_historyLock) { _currentSession.Messages.Add(new OperaSuprema.Core.Infrastructure.ChatMessage { Role = "assistant", Content = transcript }); }
                             await _sessionManager.SaveSessionAsync(_currentSession, _currentWorkspacePath);
                         });
                     }
@@ -1242,16 +1257,17 @@ namespace OperaSuprema.GUI
             // Se c'è stato un errore al giro precedente, rimuoviamo l'orfanello per mantenere l'alternanza.
             if (_chatHistory.Count > 0 && _chatHistory.Last()["role"] == "user")
             {
-                _chatHistory.RemoveAt(_chatHistory.Count - 1);
+                lock (_historyLock) { _chatHistory.RemoveAt(_chatHistory.Count - 1); }
             }
 
             // FIX CONTEXT BLOAT: Salviamo SOLO il testo puro dell'utente (o del Sistema) nella cronologia permanente
-            _chatHistory.Add(new Dictionary<string, string> { { "role", "user" }, { "content", userText } });
-            _currentSession.Messages.Add(new ChatMessage { Role = "user", Content = userText });
+            lock (_historyLock) { _chatHistory.Add(new Dictionary<string, string> { { "role", "user" }, { "content", userText } }); }
+            lock (_historyLock) { _currentSession.Messages.Add(new ChatMessage { Role = "user", Content = userText }); }
             _ = Task.Run(async () => await _sessionManager.SaveSessionAsync(_currentSession, _currentWorkspacePath));
 
             // Prepariamo un "clone" temporaneo della chat da inviare al server solo per questo giro
-            var tempHistory = new List<Dictionary<string, string>>(_chatHistory);
+            List<Dictionary<string, string>> tempHistory;
+            lock (_historyLock) { tempHistory = new List<Dictionary<string, string>>(_chatHistory); }
             
             // --- CONDIZIONAMENTO SYSTEM PROMPT PER FALDONE DOCUMENTI ---
             bool isDocumentAnalysis = docSnippets.Count > 0 || 
@@ -1398,7 +1414,7 @@ namespace OperaSuprema.GUI
                     Dispatcher.UIThread.Post(() => AppendToChat($"[ERRORE SERVER 8081]: {errorContent}", Brushes.Red));
                     
                     // FIX BILANCIAMENTO JINJA: Inseriamo una finta risposta dell'assistente per chiudere il loop
-                    _chatHistory.Add(new Dictionary<string, string> { { "role", "assistant" }, { "content", "[Errore di generazione. L'Architetto ha perso la connessione temporaneamente.]" } });
+                    lock (_historyLock) { _chatHistory.Add(new Dictionary<string, string> { { "role", "assistant" }, { "content", "[Errore di generazione. L'Architetto ha perso la connessione temporaneamente.]" } }); }
                     
                     return "";
                 }
@@ -1428,20 +1444,21 @@ namespace OperaSuprema.GUI
                 }
                 
                 // Salvataggio pulito della risposta del Mentor
-                _chatHistory.Add(new Dictionary<string, string> { { "role", "assistant" }, { "content", fullResponse.ToString() } });
-                _currentSession.Messages.Add(new ChatMessage { Role = "assistant", Content = fullResponse.ToString() });
+                lock (_historyLock) { _chatHistory.Add(new Dictionary<string, string> { { "role", "assistant" }, { "content", fullResponse.ToString() } }); }
+                lock (_historyLock) { _currentSession.Messages.Add(new ChatMessage { Role = "assistant", Content = fullResponse.ToString() }); }
                 _ = Task.Run(async () => await _sessionManager.SaveSessionAsync(_currentSession, _currentWorkspacePath));
 
                 // --- FIX OVERFLOW DI MEMORIA ---
                 if (_currentSession.Messages.Count + 1 < _chatHistory.Count) 
                 {
-                    var newHistory = new List<Dictionary<string, string>> { _chatHistory[0] };
+                    List<Dictionary<string, string>> newHistory;
+                    lock (_historyLock) { newHistory = new List<Dictionary<string, string>> { _chatHistory[0] }; }
                     foreach (var msg in _currentSession.Messages)
                     {
                         newHistory.Add(new Dictionary<string, string> { { "role", msg.Role ?? "user" }, { "content", msg.Content ?? "" } });
                     }
-                    _chatHistory.Clear();
-                    _chatHistory.AddRange(newHistory);
+                    lock (_historyLock) { _chatHistory.Clear(); }
+                    lock (_historyLock) { _chatHistory.AddRange(newHistory); }
                 }
 
             }
@@ -1709,13 +1726,14 @@ REGOLA SUPREMA DI FORMATTAZIONE: Per OGNI SINGOLO FILE, DEVI usare questo esatto
                 // --- FIX OVERFLOW DI MEMORIA ---
                 if (_currentSession.Messages.Count + 1 < _chatHistory.Count) 
                 {
-                    var newHistory = new List<Dictionary<string, string>> { _chatHistory[0] };
+                    List<Dictionary<string, string>> newHistory;
+                    lock (_historyLock) { newHistory = new List<Dictionary<string, string>> { _chatHistory[0] }; }
                     foreach (var msg in _currentSession.Messages)
                     {
                         newHistory.Add(new Dictionary<string, string> { { "role", msg.Role ?? "user" }, { "content", msg.Content ?? "" } });
                     }
-                    _chatHistory.Clear();
-                    _chatHistory.AddRange(newHistory);
+                    lock (_historyLock) { _chatHistory.Clear(); }
+                    lock (_historyLock) { _chatHistory.AddRange(newHistory); }
                 }
                 // ---------------------------------------------------------------------------
 
@@ -1954,8 +1972,8 @@ Metti i comandi in un blocco codice ```bash. Non aggiungere altre spiegazioni.";
                 }
 
                 // Chiudiamo il Loop: Registriamo fittiziamente un "passaggio di stato" nella cronologia per mantenere l'alternanza Jinja felice
-                _chatHistory.Add(new System.Collections.Generic.Dictionary<string, string> { { "role", "user" }, { "content", "Fase di produzione conclusa. Quali sono i comandi di avvio?" } });
-                _chatHistory.Add(new System.Collections.Generic.Dictionary<string, string> { { "role", "assistant" }, { "content", fullResponse.ToString() } });
+                lock (_historyLock) { _chatHistory.Add(new System.Collections.Generic.Dictionary<string, string> { { "role", "user" }, { "content", "Fase di produzione conclusa. Quali sono i comandi di avvio?" } }); }
+                lock (_historyLock) { _chatHistory.Add(new System.Collections.Generic.Dictionary<string, string> { { "role", "assistant" }, { "content", fullResponse.ToString() } }); }
 
                 Avalonia.Threading.Dispatcher.UIThread.Post(() => 
                 {
@@ -2289,8 +2307,11 @@ Metti i comandi in un blocco codice ```bash. Non aggiungere altre spiegazioni.";
                         CreateNoWindow = true
                     };
                     using (var convertProcess = System.Diagnostics.Process.Start(convertPsi)) 
-                    { 
-                        await convertProcess!.WaitForExitAsync(); 
+                    {
+                        using var ctr = cancellationToken.Register(() => {
+                            try { if (convertProcess != null && !convertProcess.HasExited) convertProcess.Kill(true); } catch { }
+                        });
+                        await convertProcess!.WaitForExitAsync(cancellationToken); 
                     }
 
                     // 2. Esecuzione Whisper-CLI
@@ -2308,8 +2329,11 @@ Metti i comandi in un blocco codice ```bash. Non aggiungere altre spiegazioni.";
                     };
 
                     using var process = System.Diagnostics.Process.Start(psi)!;
-                    string transcript = await process.StandardOutput.ReadToEndAsync();
-                    await process.WaitForExitAsync();
+                    using var ctr2 = cancellationToken.Register(() => {
+                        try { if (process != null && !process.HasExited) process.Kill(true); } catch { }
+                    });
+                    string transcript = await process.StandardOutput.ReadToEndAsync(cancellationToken);
+                    await process.WaitForExitAsync(cancellationToken);
                     // --- FINE PATCH ---
 
                     if (!string.IsNullOrEmpty(transcript))
@@ -2420,7 +2444,7 @@ Metti i comandi in un blocco codice ```bash. Non aggiungere altre spiegazioni.";
 
             ClearImagePreview();
 
-            _jakHistory.Add(new Dictionary<string, object> { { "role", "user" }, { "content", messageContent } });
+            lock (_historyLock) { _jakHistory.Add(new Dictionary<string, object> { { "role", "user" }, { "content", messageContent } }); }
             
             var payload = new { messages = _jakHistory, temperature = 0.7, max_tokens = 2048, stream = true };
             // Collegato al demone Vision sulla 8084
@@ -2464,10 +2488,10 @@ Metti i comandi in un blocco codice ```bash. Non aggiungere altre spiegazioni.";
                     }
                 }
 
-                _jakHistory.Add(new Dictionary<string, object> { { "role", "assistant" }, { "content", jakFullResponse.ToString() } });
+                lock (_historyLock) { _jakHistory.Add(new Dictionary<string, object> { { "role", "assistant" }, { "content", jakFullResponse.ToString() } }); }
 
                 // --- SALVATAGGIO ASSISTENTE JAK SU DISCO ---
-                _currentSession.Messages.Add(new ChatMessage { Role = "assistant", Content = jakFullResponse.ToString() });
+                lock (_historyLock) { _currentSession.Messages.Add(new ChatMessage { Role = "assistant", Content = jakFullResponse.ToString() }); }
                 _ = Task.Run(async () => await _sessionManager.SaveSessionAsync(_currentSession, _currentWorkspacePath));
                 
                 // --- FIX OVERFLOW DI MEMORIA ---
@@ -2484,8 +2508,8 @@ Metti i comandi in un blocco codice ```bash. Non aggiungere altre spiegazioni.";
                         newHistory.Add(new Dictionary<string, string> { { "role", msg.Role ?? "user" }, { "content", msg.Content ?? "" } });
                     }
                     
-                    _chatHistory.Clear();
-                    _chatHistory.AddRange(newHistory);
+                    lock (_historyLock) { _chatHistory.Clear(); }
+                    lock (_historyLock) { _chatHistory.AddRange(newHistory); }
                 }
 
                 if (useVoice) await SpeakAsync(jakFullResponse.ToString());
@@ -2529,8 +2553,8 @@ Metti i comandi in un blocco codice ```bash. Non aggiungere altre spiegazioni.";
                 { "text", userPrompt }
             });
 
-            _jakHistory.Add(new Dictionary<string, object> { { "role", "user" }, { "content", contentList } });
-            _currentSession.Messages.Add(new ChatMessage { Role = "user", Content = userPrompt });
+            lock (_historyLock) { _jakHistory.Add(new Dictionary<string, object> { { "role", "user" }, { "content", contentList } }); }
+            lock (_historyLock) { _currentSession.Messages.Add(new ChatMessage { Role = "user", Content = userPrompt }); }
 
             var payload = new { messages = _jakHistory, temperature = 0.7, max_tokens = 2048, stream = true };
             var request = new HttpRequestMessage(HttpMethod.Post, "http://localhost:8084/v1/chat/completions")
@@ -2572,9 +2596,9 @@ Metti i comandi in un blocco codice ```bash. Non aggiungere altre spiegazioni.";
                     }
                 }
 
-                _jakHistory.Add(new Dictionary<string, object> { { "role", "assistant" }, { "content", fullResponse.ToString() } });
+                lock (_historyLock) { _jakHistory.Add(new Dictionary<string, object> { { "role", "assistant" }, { "content", fullResponse.ToString() } }); }
 
-                _currentSession.Messages.Add(new ChatMessage { Role = "assistant", Content = fullResponse.ToString() });
+                lock (_historyLock) { _currentSession.Messages.Add(new ChatMessage { Role = "assistant", Content = fullResponse.ToString() }); }
                 _ = Task.Run(async () => await _sessionManager.SaveSessionAsync(_currentSession, _currentWorkspacePath));
                 
                 if (telegramChatId != 0 && _botClient != null)
@@ -2928,14 +2952,15 @@ Metti i comandi in un blocco codice ```bash. Non aggiungere altre spiegazioni.";
             _containerManager.KillAllContainers();
             
             // 2. Pulizia di sicurezza brutale a livello Linux per evitare processi fantasma
-            foreach (var proc in System.Diagnostics.Process.GetProcessesByName("llama-server"))
+            string[] targets = { "llama-server", "whisper-server", "whisper-cli", "ffmpeg", "arecord" };
+            foreach (var name in targets)
             {
-                try { proc.Kill(); } catch { }
+                foreach (var proc in System.Diagnostics.Process.GetProcessesByName(name))
+                {
+                    try { proc.Kill(true); } catch { }
+                }
             }
-            foreach (var proc in System.Diagnostics.Process.GetProcessesByName("whisper-server"))
-            {
-                try { proc.Kill(); } catch { }
-            }
+
             if (_whisperProcess != null && !_whisperProcess.HasExited)
             {
                 try { _whisperProcess.Kill(); } catch { }
@@ -3032,8 +3057,8 @@ Metti i comandi in un blocco codice ```bash. Non aggiungere altre spiegazioni.";
         {
             // Svuotiamo la RAM
             _currentSession = new ChatSession { Title = $"Chat del {DateTime.Now:dd/MM HH:mm}" };
-            _chatHistory.Clear();
-            _chatHistory.Add(new Dictionary<string, string> { { "role", "system" }, { "content", GetDynamicSystemPrompt() } });
+            lock (_historyLock) { _chatHistory.Clear(); }
+            lock (_historyLock) { _chatHistory.Add(new Dictionary<string, string> { { "role", "system" }, { "content", GetDynamicSystemPrompt() } }); }
             
             // Svuotiamo lo schermo visivo
             var chatPanel = this.FindControl<StackPanel>("ChatLogPanel");
@@ -3050,7 +3075,8 @@ Metti i comandi in un blocco codice ```bash. Non aggiungere altre spiegazioni.";
             {
                 string prompt = "Analizza questa breve conversazione iniziale. Genera un titolo di massimo 3 o 4 parole chiave (es. 'Interfaccia Player Audio', 'Logica Server Telegram'). Rispondi SOLO con il titolo, senza virgolette e senza punteggiatura finale.";
                 
-                var tempHistory = new List<Dictionary<string, string>>(_chatHistory);
+                List<Dictionary<string, string>> tempHistory;
+                lock (_historyLock) { tempHistory = new List<Dictionary<string, string>>(_chatHistory); }
                 tempHistory.Add(new Dictionary<string, string> { { "role", "user" }, { "content", prompt } });
                 
                 var payload = new { messages = tempHistory, temperature = 0.3, max_tokens = 15 };
@@ -3083,8 +3109,8 @@ Metti i comandi in un blocco codice ```bash. Non aggiungere altre spiegazioni.";
                 chatList.SelectionChanged -= OnChatSelectedFromList;
                 
                 _currentSession = selectedSession;
-                _chatHistory.Clear();
-                _chatHistory.Add(new Dictionary<string, string> { { "role", "system" }, { "content", GetDynamicSystemPrompt() } });
+                lock (_historyLock) { _chatHistory.Clear(); }
+                lock (_historyLock) { _chatHistory.Add(new Dictionary<string, string> { { "role", "system" }, { "content", GetDynamicSystemPrompt() } }); }
 
                 // Svuotiamo e ristampiamo a schermo tutta la cronologia passata
                 var chatPanel = this.FindControl<StackPanel>("ChatLogPanel");
@@ -3094,7 +3120,7 @@ Metti i comandi in un blocco codice ```bash. Non aggiungere altre spiegazioni.";
 
                 foreach (var msg in _currentSession.Messages)
                 {
-                    _chatHistory.Add(new Dictionary<string, string> { { "role", msg.Role ?? "user" }, { "content", msg.Content ?? "" } });
+                    lock (_historyLock) { _chatHistory.Add(new Dictionary<string, string> { { "role", msg.Role ?? "user" }, { "content", msg.Content ?? "" } }); }
                     
                     if (msg.Role == "user")
                         AppendToChat($"[EMANUELE]: {msg.Content}", Brushes.White);
@@ -3141,7 +3167,8 @@ Metti i comandi in un blocco codice ```bash. Non aggiungere altre spiegazioni.";
                     string prompt = "Riassumi il contenuto di questa nostra conversazione in un titolo breve di massimo 4 parole. Rispondi SOLO con il titolo, senza virgolette e senza spiegazioni.";
                     
                     // Clona temporaneamente la storia per non sporcare la conversazione
-                    var tempHistory = new List<Dictionary<string, string>>(_chatHistory);
+                    List<Dictionary<string, string>> tempHistory;
+                    lock (_historyLock) { tempHistory = new List<Dictionary<string, string>>(_chatHistory); }
                     tempHistory.Add(new Dictionary<string, string> { { "role", "user" }, { "content", prompt } });
                     
                     var payload = new { messages = tempHistory, temperature = 0.3, max_tokens = 50 };
@@ -4227,7 +4254,7 @@ REGOLA SUPREMA DI FORMATTAZIONE: Per OGNI file, usa TASSATIVAMENTE questo format
                 {
                     if (file.TryGetLocalPath() is string localPath && System.IO.File.Exists(localPath))
                     {
-                        _currentSessionDocs.Add(System.IO.Path.GetFileName(localPath));
+                        Dispatcher.UIThread.Post(() => _currentSessionDocs.Add(System.IO.Path.GetFileName(localPath)));
                         await _sessionDocManager.IngestDocumentAsync(_currentSession.Id, localPath, (msg) => {
                             Dispatcher.UIThread.Post(() => AppendToChat(msg, Avalonia.Media.Brushes.Orange));
                         }, progressHandler);
