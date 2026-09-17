@@ -1663,7 +1663,7 @@ REGOLA SUPREMA DI FORMATTAZIONE: Per OGNI SINGOLO FILE, DEVI usare questo esatto
             };
 
             var request = new HttpRequestMessage(HttpMethod.Post, "http://localhost:8082/v1/chat/completions") {
-                Content = new StringContent(System.Text.Json.JsonSerializer.Serialize(payload), System.Text.Encoding.UTF8, "application/json")
+                Content = System.Net.Http.Json.JsonContent.Create(payload)
             };
 
             // --- INIZIO PATCH: RESET DEL TIMEOUT PER OGNI INFERENZA (5 MINUTI) ---
@@ -1938,7 +1938,7 @@ Metti i comandi in un blocco codice ```bash. Non aggiungere altre spiegazioni.";
 
             var request = new HttpRequestMessage(HttpMethod.Post, "http://localhost:8081/v1/chat/completions")
             {
-                Content = new StringContent(System.Text.Json.JsonSerializer.Serialize(payload), System.Text.Encoding.UTF8, "application/json")
+                Content = System.Net.Http.Json.JsonContent.Create(payload)
             };
 
             try
@@ -3283,12 +3283,17 @@ Attendi sempre la decisione dell'utente prima di procedere.
         // Questo evento scatta ogni volta che clicchi su una CheckBox nel menu laterale!
         private void OnPersonaChanged(object? sender, RoutedEventArgs e)
         {
-            // Aggiorna a caldo il cervello del Mentor nella chat attiva senza bisogno di riavviare
-            if (_chatHistory.Count > 0 && _chatHistory[0]["role"] == "system")
+            bool hasSystemPrompt = false;
+            lock (_historyLock)
             {
-                _chatHistory[0]["content"] = GetDynamicSystemPrompt();
-                
-                // Opzionale: Commentalo se ritieni che scriva troppi messaggi a schermo
+                hasSystemPrompt = _chatHistory.Count > 0 && _chatHistory[0]["role"] == "system";
+                if (hasSystemPrompt)
+                {
+                    _chatHistory[0]["content"] = GetDynamicSystemPrompt();
+                }
+            }
+            if (hasSystemPrompt)
+            {
                 AppendToChat("[SISTEMA]: 🎭 Matrice Comportamentale ri-allineata. Il Master Mentor ha acquisito le nuove direttive.", Avalonia.Media.Brushes.MediumPurple);
             }
         }
@@ -3889,7 +3894,7 @@ REGOLA SUPREMA DI FORMATTAZIONE: Per OGNI file, usa TASSATIVAMENTE questo format
             };
 
             var request = new HttpRequestMessage(HttpMethod.Post, "http://localhost:8082/v1/chat/completions") {
-                Content = new StringContent(System.Text.Json.JsonSerializer.Serialize(payload), System.Text.Encoding.UTF8, "application/json")
+                Content = System.Net.Http.Json.JsonContent.Create(payload)
             };
 
             // --- INIZIO PATCH: RESET DEL TIMEOUT PER OGNI INFERENZA (5 MINUTI) ---
@@ -4217,7 +4222,7 @@ REGOLA SUPREMA DI FORMATTAZIONE: Per OGNI file, usa TASSATIVAMENTE questo format
                 {
                     if (file.TryGetLocalPath() is string localPath)
                     {
-                        _currentSessionDocs.Add(System.IO.Path.GetFileName(localPath));
+                        Dispatcher.UIThread.Post(() => _currentSessionDocs.Add(System.IO.Path.GetFileName(localPath)));
                         await _sessionDocManager.IngestDocumentAsync(_currentSession.Id, localPath, (msg) => {
                             Dispatcher.UIThread.Post(() => AppendToChat(msg, Avalonia.Media.Brushes.Orange));
                         }, progressHandler);
