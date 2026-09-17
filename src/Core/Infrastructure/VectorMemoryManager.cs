@@ -47,7 +47,7 @@ namespace OperaSuprema.Core.Infrastructure
                         }
                     };
 
-                    var requestContent = new StringContent(JsonSerializer.Serialize(createPayload), Encoding.UTF8, "application/json");
+                    var requestContent = System.Net.Http.Json.JsonContent.Create(createPayload);
                     var createResponse = await _httpClient.PutAsync($"{QdrantBaseUrl}/collections/{CollectionName}", requestContent);
                     
                     if (createResponse.IsSuccessStatusCode)
@@ -78,7 +78,7 @@ namespace OperaSuprema.Core.Infrastructure
             string formattedText = prefix + safeText;
 
             var payload = new { content = formattedText };
-            var requestContent = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+            var requestContent = System.Net.Http.Json.JsonContent.Create(payload);
 
             // CI METTIAMO IN FILA: Il codice aspetta qui il suo turno
             await _nomicSemaphore.WaitAsync();
@@ -200,7 +200,7 @@ namespace OperaSuprema.Core.Infrastructure
                     }
                 };
 
-                var requestContent = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+                var requestContent = System.Net.Http.Json.JsonContent.Create(payload);
                 var request = new HttpRequestMessage(HttpMethod.Put, $"{QdrantBaseUrl}/collections/{CollectionName}/points") { Content = requestContent };
                 
                 var response = await _httpClient.SendAsync(request);
@@ -232,7 +232,7 @@ namespace OperaSuprema.Core.Infrastructure
                     with_payload = true
                 };
 
-                var requestContent = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+                var requestContent = System.Net.Http.Json.JsonContent.Create(payload);
                 var response = await _httpClient.PostAsync($"{QdrantBaseUrl}/collections/{CollectionName}/points/search", requestContent);
                 
                 if (!response.IsSuccessStatusCode)

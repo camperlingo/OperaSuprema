@@ -50,7 +50,7 @@ namespace OperaSuprema.Core.Infrastructure
                         }
                     };
 
-                    var requestContent = new StringContent(JsonSerializer.Serialize(createPayload), Encoding.UTF8, "application/json");
+                    var requestContent = System.Net.Http.Json.JsonContent.Create(createPayload);
                     var createResponse = await _httpClient.PutAsync($"{QdrantBaseUrl}/collections/{CollectionName}", requestContent);
                     
                     if (createResponse.IsSuccessStatusCode)
@@ -153,7 +153,7 @@ namespace OperaSuprema.Core.Infrastructure
                     }
                 };
 
-                var requestContent = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+                var requestContent = System.Net.Http.Json.JsonContent.Create(payload);
                 var response = await _httpClient.PutAsync($"{QdrantBaseUrl}/collections/{CollectionName}/points", requestContent);
                 
                 if (!response.IsSuccessStatusCode)
@@ -431,7 +431,7 @@ namespace OperaSuprema.Core.Infrastructure
                     }
                 };
 
-                var requestContent = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+                var requestContent = System.Net.Http.Json.JsonContent.Create(payload);
                 var response = await _httpClient.PostAsync($"{QdrantBaseUrl}/collections/{CollectionName}/points/search", requestContent);
 
                 if (response.IsSuccessStatusCode)
@@ -479,7 +479,7 @@ namespace OperaSuprema.Core.Infrastructure
                     exact = true
                 };
 
-                var requestContent = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+                var requestContent = System.Net.Http.Json.JsonContent.Create(payload);
                 var response = await _httpClient.PostAsync($"{QdrantBaseUrl}/collections/{CollectionName}/points/count", requestContent, ct);
                 
                 if (response.IsSuccessStatusCode)
@@ -536,7 +536,7 @@ namespace OperaSuprema.Core.Infrastructure
                         payload["offset"] = offset;
                     }
 
-                    var requestContent = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+                    var requestContent = System.Net.Http.Json.JsonContent.Create(payload);
                     var response = await _httpClient.PostAsync($"{QdrantBaseUrl}/collections/{CollectionName}/points/scroll", requestContent, ct);
 
                     if (response.IsSuccessStatusCode)
@@ -622,7 +622,7 @@ namespace OperaSuprema.Core.Infrastructure
                     }
                 };
 
-                var requestContent = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+                var requestContent = System.Net.Http.Json.JsonContent.Create(payload);
                 var request = new HttpRequestMessage(HttpMethod.Post, $"{QdrantBaseUrl}/collections/{CollectionName}/points/delete")
                 {
                     Content = requestContent
@@ -673,7 +673,7 @@ namespace OperaSuprema.Core.Infrastructure
                         payload["offset"] = offset;
                     }
 
-                    var requestContent = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+                    var requestContent = System.Net.Http.Json.JsonContent.Create(payload);
                     var response = await _httpClient.PostAsync($"{QdrantBaseUrl}/collections/{CollectionName}/points/scroll", requestContent, ct);
 
                     if (response.IsSuccessStatusCode)
