@@ -61,6 +61,9 @@ namespace OperaSuprema.Core.Infrastructure
             {
                 if (process != null)
                 {
+                    using var ctr = ct.Register(() => {
+                        try { if (process != null && !process.HasExited) process.Kill(true); } catch { }
+                    });
                     await process.StandardError.ReadToEndAsync(ct);
                     await process.WaitForExitAsync(ct);
                     if (File.Exists(audioPath))
@@ -90,6 +93,9 @@ namespace OperaSuprema.Core.Infrastructure
                 {
                     if (process != null)
                     {
+                        using var ctr = ct.Register(() => {
+                            try { if (process != null && !process.HasExited) process.Kill(true); } catch { }
+                        });
                         await process.StandardError.ReadToEndAsync(ct);
                         await process.WaitForExitAsync(ct);
                         var extractedFiles = Directory.GetFiles(tempDir, "frame_*.jpg");
@@ -124,6 +130,10 @@ namespace OperaSuprema.Core.Infrastructure
             using var process = Process.Start(psi);
             if (process == null) return 0;
             
+            using var ctr = ct.Register(() => {
+                try { if (process != null && !process.HasExited) process.Kill(true); } catch { }
+            });
+
             string output = await process.StandardOutput.ReadToEndAsync();
             await process.WaitForExitAsync(ct);
             
@@ -150,6 +160,9 @@ namespace OperaSuprema.Core.Infrastructure
             using var process = Process.Start(psi);
             if (process != null)
             {
+                using var ctr = ct.Register(() => {
+                    try { if (process != null && !process.HasExited) process.Kill(true); } catch { }
+                });
                 await process.StandardError.ReadToEndAsync(ct);
                 await process.WaitForExitAsync(ct);
             }
