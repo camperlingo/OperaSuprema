@@ -34,6 +34,18 @@
                     <Button Grid.Column="1" Content="⚠️ Ripristina Default Sicuri" Click="OnRestoreDefaultsClicked" Background="#D32F2F" Foreground="White" FontWeight="Bold" Cursor="Hand"/>
                 </Grid>
             </Border>
+
+            <!-- SEZIONE TRASCRIZIONE AUDIO / STT -->
+            <Border Background="#252526" Padding="10" CornerRadius="6">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="🎤 Trascrizione Audio / STT:" Foreground="White" FontWeight="Bold"/>
+                    <Grid ColumnDefinitions="Auto, *">
+                        <TextBlock Grid.Column="0" Text="Endpoint URL:" VerticalAlignment="Center" Foreground="Gray" Margin="0,0,10,0"/>
+                        <TextBox Grid.Column="1" Name="SttEndpointTextBox" Background="#1E1E1E"/>
+                    </Grid>
+                    <CheckBox Name="ChkSttAlternateEngine" Content="Usa motore alternativo o modello locale" Foreground="SpringGreen" FontWeight="Bold"/>
+                </StackPanel>
+            </Border>
             
         </StackPanel>
         

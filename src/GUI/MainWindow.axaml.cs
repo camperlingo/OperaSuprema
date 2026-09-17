@@ -52,9 +52,10 @@ namespace OperaSuprema.GUI
 
         
         private static readonly HttpClient _httpClient = new HttpClient { Timeout = TimeSpan.FromMinutes(30) };
-        private string? _pendingAudioPath = null;
+        private string? _sessionVideoPath = null;
+        private string? _sessionAudioPath = null;
         private readonly VideoPipelineService _videoPipelineService = new();
-        private List<string>? _pendingVideoFrames = null;
+        private List<VideoFrameInfo>? _sessionFrames = null;
 
         private readonly List<Dictionary<string, string>> _chatHistory = new();
         private readonly List<Dictionary<string, object>> _jakHistory = new();
@@ -394,12 +395,13 @@ namespace OperaSuprema.GUI
 
                             if (videoResult.ExtractedAudioPath != null)
                             {
-                                _pendingAudioPath = videoResult.ExtractedAudioPath;
+                                _sessionAudioPath = videoResult.ExtractedAudioPath;
                             }
-                            if (videoResult.ExtractedFramesPaths.Count > 0)
+                            if (videoResult.ExtractedFrames.Count > 0)
                             {
-                                _pendingVideoFrames = videoResult.ExtractedFramesPaths;
-                                _currentImagePath = _pendingVideoFrames[0];
+                                _sessionFrames = videoResult.ExtractedFrames;
+                                _sessionVideoPath = path;
+                                _currentImagePath = _sessionFrames[0].FilePath;
                                 AttachImageFromPath(_currentImagePath);
                             }
                         }
@@ -440,8 +442,9 @@ namespace OperaSuprema.GUI
             if (_currentImagePath != null)
             {
                 _currentImagePath = null;
-                _pendingVideoFrames = null;
-                _pendingAudioPath = null;
+                _sessionFrames = null;
+                _sessionAudioPath = null;
+                _sessionVideoPath = null;
                 
                 var previewContainer = this.FindControl<Border>("ImagePreviewContainer");
                 if (previewContainer != null) previewContainer.IsVisible = false;
@@ -665,7 +668,7 @@ namespace OperaSuprema.GUI
                            (lensAnalisi != null && lensAnalisi.IsChecked == true) || 
                            (lensEstrai != null && lensEstrai.IsChecked == true);
 
-            if (inputTextBox == null || (string.IsNullOrWhiteSpace(inputTextBox.Text) && string.IsNullOrEmpty(_currentImagePath) && !hasLens && string.IsNullOrEmpty(_pendingAudioPath) && (_pendingVideoFrames == null || _pendingVideoFrames.Count == 0))) return;
+            if (inputTextBox == null || (string.IsNullOrWhiteSpace(inputTextBox.Text) && string.IsNullOrEmpty(_currentImagePath) && !hasLens && string.IsNullOrEmpty(_sessionAudioPath) && (_sessionFrames == null || _sessionFrames.Count == 0))) return;
 
             inputTextBox.IsEnabled = false;
             if (sendBtn != null) sendBtn.IsEnabled = false;
@@ -694,9 +697,52 @@ namespace OperaSuprema.GUI
                     }
                 }
 
-                if (_pendingVideoFrames != null && _pendingVideoFrames.Count > 0)
+                bool useVoiceForThisChain = _isVoiceSession;
+                _isVoiceSession = false; 
+
+                long currentTelegramChatId = _lastTelegramChatId;
+                _lastTelegramChatId = 0; 
+
+                string textLower = userText.ToLower();
+                bool isAudioRequest = !string.IsNullOrEmpty(_sessionAudioPath) && 
+                    (userText.Trim() == "1" || userText.Trim() == "2" || userText.Trim() == "3" || userText.Trim() == "4" ||
+                     textLower.Contains("trascrivi") || textLower.Contains("sbobina") || textLower.Contains("testo parlato") ||
+                     textLower.Contains("rumori") || textLower.Contains("tono") || textLower.Contains("emozioni") || textLower.Contains("musica") || textLower.Contains("audio"));
+
+                if (isAudioRequest)
                 {
-                    if (!string.IsNullOrEmpty(_pendingAudioPath) && (userText.Trim() == "1" || userText.Trim() == "2" || userText.Trim() == "3" || userText.Trim() == "4"))
+                    string audioPathToProcess = _sessionAudioPath!;
+                    var timeMatch = System.Text.RegularExpressions.Regex.Match(textLower, @"tra\s+(\d{2}:\d{2}(?:\.\d+)?)\s+e\s+(\d{2}:\d{2}(?:\.\d+)?)");
+                    if (timeMatch.Success)
+                    {
+                        string startStr = timeMatch.Groups[1].Value;
+                        string endStr = timeMatch.Groups[2].Value;
+                        if (TimeSpan.TryParseExact(startStr, new[] { @"mm\:ss", @"mm\:ss\.ff" }, System.Globalization.CultureInfo.InvariantCulture, out var startTs) &&
+                            TimeSpan.TryParseExact(endStr, new[] { @"mm\:ss", @"mm\:ss\.ff" }, System.Globalization.CultureInfo.InvariantCulture, out var endTs))
+                        {
+                            double startSec = startTs.TotalSeconds;
+                            double durationSec = endTs.TotalSeconds - startSec;
+                            if (durationSec > 0)
+                            {
+                                audioPathToProcess = await _videoPipelineService.SliceAudioAsync(_sessionAudioPath!, startSec, durationSec, _generationCts.Token);
+                                AppendToChat($"[SISTEMA]: ✂️ Audio tagliato da {startStr} a {endStr}.", Avalonia.Media.Brushes.Gray);
+                            }
+                        }
+                    }
+
+                    AppendToChat($"[EMANUELE]: {userText}", Avalonia.Media.Brushes.White);
+                    string aUserMsgId = Guid.NewGuid().ToString();
+                    int aUserTokens = userText.Length / 4;
+                    await _ledgerService.InsertChatMessageAsync(aUserMsgId, _currentSession.Id, "user", userText, aUserTokens);
+                    _chatHistory.Add(new Dictionary<string, string> { { "role", "user" }, { "content", userText } });
+                    _currentSession.Messages.Add(new OperaSuprema.Core.Infrastructure.ChatMessage { Role = "user", Content = userText });
+                    await _sessionManager.SaveSessionAsync(_currentSession, _currentWorkspacePath);
+
+                    if (textLower.Contains("trascrivi") || textLower.Contains("sbobina") || textLower.Contains("testo parlato"))
+                    {
+                        await InvokeWhisperTranscriptionAsync(audioPathToProcess, currentTelegramChatId);
+                    }
+                    else
                     {
                         string audioDirective = userText;
                         if (userText.Trim() == "1") audioDirective = "Esegui un'analisi forense e prosodica: studia l'intonazione, le emozioni, lo stress vocale e le incongruenze nella voce.";
@@ -704,54 +750,15 @@ namespace OperaSuprema.GUI
                         else if (userText.Trim() == "3") audioDirective = "Esegui un'analisi musicale avanzata: riconosci strumenti, timbri, note e progressioni armoniche.";
                         else if (userText.Trim() == "4") audioDirective = "Trascrivi l'audio ed esegui una sintesi semantica pura: scomponi i dialoghi e riassumi i punti chiave.";
 
-                        string audioPath = _pendingAudioPath;
-                        _pendingAudioPath = null;
-                        
-                        AppendToChat($"[EMANUELE]: {userText}", Avalonia.Media.Brushes.White);
-                        
-                        string aUserMsgId = Guid.NewGuid().ToString();
-                        int aUserTokens = userText.Length / 4;
-                        await _ledgerService.InsertChatMessageAsync(aUserMsgId, _currentSession.Id, "user", userText, aUserTokens);
-                        _chatHistory.Add(new Dictionary<string, string> { { "role", "user" }, { "content", userText } });
-                        _currentSession.Messages.Add(new OperaSuprema.Core.Infrastructure.ChatMessage { Role = "user", Content = userText });
-                        await _sessionManager.SaveSessionAsync(_currentSession, _currentWorkspacePath);
-                        
-                        await InvokeAudioAnalyzerAsync(audioDirective, audioPath);
-                        return;
+                        await InvokeAudioAnalyzerAsync(audioDirective, audioPathToProcess);
                     }
-                    else
-                    {
-                        _pendingAudioPath = null;
-                    }
+                    return;
                 }
-                else if (!string.IsNullOrEmpty(_pendingAudioPath))
+                else if (!string.IsNullOrEmpty(_sessionAudioPath) && (_sessionFrames == null || _sessionFrames.Count == 0))
                 {
                     if (string.IsNullOrWhiteSpace(userText) && !hasLens)
                     {
-                        AppendToChat($"[MASTER MENTOR]: Ho ricevuto la traccia audio {Path.GetFileName(_pendingAudioPath)}. Poiché non hai specificato l'obiettivo dell'analisi, scegli un'opzione digitando il numero corrispondente:\n1️⃣ Analisi forense e prosodica\n2️⃣ Riconoscimento acustico ambientale\n3️⃣ Analisi musicale avanzata\n4️⃣ Trascrizione e sintesi semantica pura\nDigita il numero o scrivi una richiesta personalizzata.", Avalonia.Media.Brushes.LightGreen);
-                        return;
-                    }
-                    else
-                    {
-                        string audioDirective = userText;
-                        if (userText.Trim() == "1") audioDirective = "Esegui un'analisi forense e prosodica: studia l'intonazione, le emozioni, lo stress vocale e le incongruenze nella voce.";
-                        else if (userText.Trim() == "2") audioDirective = "Esegui un riconoscimento acustico ambientale: rileva rumori di fondo, colpi, allarmi, vetri infranti o eventi sonori rilevanti.";
-                        else if (userText.Trim() == "3") audioDirective = "Esegui un'analisi musicale avanzata: riconosci strumenti, timbri, note e progressioni armoniche.";
-                        else if (userText.Trim() == "4") audioDirective = "Trascrivi l'audio ed esegui una sintesi semantica pura: scomponi i dialoghi e riassumi i punti chiave.";
-
-                        string audioPath = _pendingAudioPath;
-                        _pendingAudioPath = null;
-                        
-                        AppendToChat($"[EMANUELE]: {userText}", Avalonia.Media.Brushes.White);
-                        
-                        string aUserMsgId = Guid.NewGuid().ToString();
-                        int aUserTokens = userText.Length / 4;
-                        await _ledgerService.InsertChatMessageAsync(aUserMsgId, _currentSession.Id, "user", userText, aUserTokens);
-                        _chatHistory.Add(new Dictionary<string, string> { { "role", "user" }, { "content", userText } });
-                        _currentSession.Messages.Add(new OperaSuprema.Core.Infrastructure.ChatMessage { Role = "user", Content = userText });
-                        await _sessionManager.SaveSessionAsync(_currentSession, _currentWorkspacePath);
-                        
-                        await InvokeAudioAnalyzerAsync(audioDirective, audioPath);
+                        AppendToChat($"[MASTER MENTOR]: Ho ricevuto la traccia audio {Path.GetFileName(_sessionAudioPath)}. Poiché non hai specificato l'obiettivo dell'analisi, scegli un'opzione digitando il numero corrispondente:\n1️⃣ Analisi forense e prosodica\n2️⃣ Riconoscimento acustico ambientale\n3️⃣ Analisi musicale avanzata\n4️⃣ Trascrizione e sintesi semantica pura\nDigita il numero o scrivi una richiesta personalizzata.", Avalonia.Media.Brushes.LightGreen);
                         return;
                     }
                 }
@@ -768,11 +775,7 @@ namespace OperaSuprema.GUI
                 }
                 // -----------------------------------------------------------------------------------
 
-                bool useVoiceForThisChain = _isVoiceSession;
-                _isVoiceSession = false; 
 
-                long currentTelegramChatId = _lastTelegramChatId;
-                _lastTelegramChatId = 0; 
 
                 string cleanCommand = userText.Trim().ToLowerInvariant();
                 if (cleanCommand == "/decisioni" || cleanCommand == "/ledger")
@@ -791,7 +794,7 @@ namespace OperaSuprema.GUI
                 }
 
                 // --- SALVAGENTE PER DIMENTICANZA SLASH ---
-                string textLower = userText.Trim().ToLower();
+                textLower = userText.Trim().ToLower();
                 if (!textLower.StartsWith("/addestra") && 
                    (textLower.StartsWith("addestra ") || textLower.StartsWith("studia ") || textLower.Contains("addestra jak")))
                 {
@@ -819,13 +822,12 @@ namespace OperaSuprema.GUI
                 }
                 // -------------------------------------------------------------
 
-                if (_pendingVideoFrames != null && _pendingVideoFrames.Count > 0)
+                if (_sessionFrames != null && _sessionFrames.Count > 0)
                 {
                     if (string.IsNullOrWhiteSpace(userText)) userText = "Analizza in dettaglio questo video (fornito come sequenza di fotogrammi).";
-                    await InvokeVisionVideoAnalyzerAsync(userText, _pendingVideoFrames.ToList(), currentTelegramChatId);
-                    _pendingVideoFrames = null;
-                    _currentImagePath = null; 
-                    ClearImagePreview();
+                    await InvokeVisionVideoAnalyzerAsync(userText, _sessionFrames.ToList(), currentTelegramChatId);
+                    // Non cancelliamo per persistenza di sessione
+                    _currentImagePath = _sessionFrames[0].FilePath; 
                 }
                 else if (!string.IsNullOrEmpty(_currentImagePath))
                 {
@@ -971,8 +973,41 @@ namespace OperaSuprema.GUI
             }
             finally
             {
-                _pendingAudioPath = null;
                 _containerManager.KillContainer("AudioAnalyzer");
+            }
+        }
+
+        private async Task InvokeWhisperTranscriptionAsync(string audioPath, long telegramChatId)
+        {
+            AppendToChat("[SISTEMA]: ⚙️ Trascrizione in corso...", Avalonia.Media.Brushes.Gray);
+            try
+            {
+                using var form = new MultipartFormDataContent();
+                var fileContent = new ByteArrayContent(await File.ReadAllBytesAsync(audioPath));
+                fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("audio/wav");
+                form.Add(fileContent, "file", "dictation.wav");
+                
+                string endpointUrl = _configManager.CurrentConfig.SttEndpointUrl;
+                if (string.IsNullOrWhiteSpace(endpointUrl)) endpointUrl = "http://localhost:8080/inference";
+                
+                var response = await _httpClient.PostAsync(endpointUrl, form);
+                response.EnsureSuccessStatusCode();
+                
+                var jsonResult = await response.Content.ReadAsStringAsync();
+                using var doc = JsonDocument.Parse(jsonResult);
+                string transcript = doc.RootElement.GetProperty("text").GetString()?.Trim() ?? "";
+
+                if (!string.IsNullOrEmpty(transcript))
+                {
+                    AppendToChat($"[WHISPER]:\n{transcript}", Avalonia.Media.Brushes.Yellow);
+                    _chatHistory.Add(new Dictionary<string, string> { { "role", "assistant" }, { "content", transcript } });
+                    _currentSession.Messages.Add(new OperaSuprema.Core.Infrastructure.ChatMessage { Role = "assistant", Content = transcript });
+                    await _sessionManager.SaveSessionAsync(_currentSession, _currentWorkspacePath);
+                }
+            }
+            catch (Exception ex)
+            {
+                AppendToChat($"[ERRORE WHISPER]: {ex.Message}", Avalonia.Media.Brushes.Red);
             }
         }
 
@@ -2353,18 +2388,23 @@ Metti i comandi in un blocco codice ```bash. Non aggiungere altre spiegazioni.";
             catch (Exception ex) { AppendToChat($"[ERRORE JAK]: {ex.Message}", Brushes.Red); }
         }
 
-        private async Task InvokeVisionVideoAnalyzerAsync(string userPrompt, List<string> framePaths, long telegramChatId = 0)
+        private async Task InvokeVisionVideoAnalyzerAsync(string userPrompt, List<VideoFrameInfo> frames, long telegramChatId = 0)
         {
             AppendToChat("[SISTEMA]: 🎬 Elaborazione multimodale del video in corso (Qwen2-VL)...", Brushes.LightSkyBlue);
             if (telegramChatId != 0) _lastTelegramRequest = userPrompt;
             
             var contentList = new List<Dictionary<string, object>>();
 
-            foreach (var framePath in framePaths)
+            foreach (var (frame, i) in frames.Select((f, idx) => (f, idx)))
             {
-                if (File.Exists(framePath))
+                if (File.Exists(frame.FilePath))
                 {
-                    string base64Image = ConvertImageToBase64(framePath);
+                    string base64Image = ConvertImageToBase64(frame.FilePath);
+                    contentList.Add(new Dictionary<string, object>
+                    {
+                        { "type", "text" },
+                        { "text", $"[FOTOGRAMMA {i+1} | TEMPO: {frame.FormattedTime}]" }
+                    });
                     contentList.Add(new Dictionary<string, object>
                     {
                         { "type", "image_url" },
@@ -3911,11 +3951,22 @@ REGOLA SUPREMA DI FORMATTAZIONE: Per OGNI file, usa TASSATIVAMENTE questo format
             }
 
             // 4. Montaggio del nuovo Modello
-            var modelConfig = _configManager.CurrentConfig.Modes["HACKER"].FirstOrDefault(m => m.Id == modelToStart);
+            var modeSelector = this.FindControl<Avalonia.Controls.ComboBox>("ModeSelector");
+            string currentMode = modeSelector != null && modeSelector.SelectedIndex == 1 ? "ACCADEMIA" : "HACKER";
+            var modelConfig = _configManager.CurrentConfig.Modes[currentMode].FirstOrDefault(m => m.Id == modelToStart);
             if (modelConfig != null)
             {
                 string storagePath = _configManager.CurrentConfig.StoragePath;
-                await _containerManager.StartContainerAsync(modelConfig.Id, $"{storagePath}/{modelConfig.FileName}", modelConfig.Port, modelConfig.ContextSize);
+                await _containerManager.StartContainerAsync(
+                    modelConfig.Id, 
+                    $"{storagePath}/{modelConfig.FileName}", 
+                    modelConfig.Port, 
+                    modelConfig.ContextSize,
+                    modelConfig.MmprojFileName ?? "",
+                    modelConfig.UseFlashAttention,
+                    modelConfig.KvCacheType,
+                    _configManager.CurrentConfig.LlamaServerPath
+                );
             }
 
             // 5. Spegnimento dell'Overlay

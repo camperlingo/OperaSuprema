@@ -31,6 +31,10 @@ namespace OperaSuprema.Core.Infrastructure
         // --- NUOVO: PERCORSO LLAMA.CPP ---
         public string LlamaServerPath { get; set; } = "";
         
+        // --- NUOVO: TRASCRIZIONE AUDIO / STT ---
+        public string SttEndpointUrl { get; set; } = "http://localhost:8080/inference";
+        public bool SttUseAlternateEngine { get; set; } = false;
+        
         public Dictionary<string, List<ModelDefinition>> Modes { get; set; } = new();
     }
 
