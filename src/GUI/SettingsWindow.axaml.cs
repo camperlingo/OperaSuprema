@@ -104,17 +104,48 @@ namespace OperaSuprema.GUI
             }
 
             // --- NUOVO: CARICA TRASCRIZIONE AUDIO / STT ---
+            var sttEngineComboBox = this.FindControl<ComboBox>("SttEngineComboBox");
+            if (sttEngineComboBox != null)
+            {
+                foreach (var item in sttEngineComboBox.Items)
+                {
+                    if (item is ComboBoxItem cbItem && cbItem.Content?.ToString() == _tempConfig.SttEngineType)
+                    {
+                        sttEngineComboBox.SelectedItem = cbItem;
+                        break;
+                    }
+                }
+            }
+
             var sttEndpointTextBox = this.FindControl<TextBox>("SttEndpointTextBox");
             if (sttEndpointTextBox != null)
             {
                 sttEndpointTextBox.Text = _tempConfig.SttEndpointUrl;
             }
 
-            var chkSttAlternateEngine = this.FindControl<CheckBox>("ChkSttAlternateEngine");
-            if (chkSttAlternateEngine != null)
+            var sttModelPathTextBox = this.FindControl<TextBox>("SttModelPathTextBox");
+            if (sttModelPathTextBox != null)
             {
-                chkSttAlternateEngine.IsChecked = _tempConfig.SttUseAlternateEngine;
-                chkSttAlternateEngine.IsCheckedChanged += (s, e) => _tempConfig.SttUseAlternateEngine = chkSttAlternateEngine.IsChecked == true;
+                sttModelPathTextBox.Text = _tempConfig.SttModelOrBinaryPath;
+            }
+
+            var btnBrowseSttModel = this.FindControl<Button>("BtnBrowseSttModel");
+            if (btnBrowseSttModel != null && sttModelPathTextBox != null)
+            {
+                btnBrowseSttModel.Click += async (s, e) =>
+                {
+                    var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+                    {
+                        Title = "Seleziona Modello o Eseguibile Locale",
+                        AllowMultiple = false
+                    });
+                    if (files.Count > 0)
+                    {
+                        string selectedPath = files[0].Path.LocalPath;
+                        sttModelPathTextBox.Text = selectedPath;
+                        _tempConfig.SttModelOrBinaryPath = selectedPath;
+                    }
+                };
             }
 
             // Pulisci i pannelli prima di ridisegnare (utile per il ripristino default)
@@ -249,10 +280,22 @@ namespace OperaSuprema.GUI
             }
 
             // --- NUOVO: SALVA STT ---
+            var sttEngineComboBox = this.FindControl<ComboBox>("SttEngineComboBox");
+            if (sttEngineComboBox != null && sttEngineComboBox.SelectedItem is ComboBoxItem selectedEngine)
+            {
+                _tempConfig.SttEngineType = selectedEngine.Content?.ToString() ?? "Whisper";
+            }
+
             var sttEndpointTextBox = this.FindControl<TextBox>("SttEndpointTextBox");
             if (sttEndpointTextBox != null)
             {
                 _tempConfig.SttEndpointUrl = sttEndpointTextBox.Text?.Trim() ?? "";
+            }
+
+            var sttModelPathTextBox = this.FindControl<TextBox>("SttModelPathTextBox");
+            if (sttModelPathTextBox != null)
+            {
+                _tempConfig.SttModelOrBinaryPath = sttModelPathTextBox.Text?.Trim() ?? "";
             }
 
             _configManager.SaveConfig(_tempConfig);
