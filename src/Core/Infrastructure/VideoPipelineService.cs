@@ -7,10 +7,12 @@ using System.Threading.Tasks;
 
 namespace OperaSuprema.Core.Infrastructure
 {
+    public record VideoFrameInfo(string FilePath, double TimestampSeconds, string FormattedTime);
+
     public class VideoExtractionResult
     {
         public string? ExtractedAudioPath { get; set; }
-        public List<string> ExtractedFramesPaths { get; set; } = new();
+        public List<VideoFrameInfo> ExtractedFrames { get; set; } = new();
         public double DurationSeconds { get; set; }
     }
 
@@ -92,8 +94,14 @@ namespace OperaSuprema.Core.Infrastructure
                         await process.WaitForExitAsync(ct);
                         var extractedFiles = Directory.GetFiles(tempDir, "frame_*.jpg");
                         Array.Sort(extractedFiles);
-                        result.ExtractedFramesPaths.AddRange(extractedFiles);
-                        logCallback?.Invoke($"[VideoPipeline] Estratti {extractedFiles.Length} fotogrammi.");
+                        for (int i = 0; i < extractedFiles.Length; i++)
+                        {
+                            double timestamp = i * (result.DurationSeconds / Math.Max(1, extractedFiles.Length));
+                            TimeSpan ts = TimeSpan.FromSeconds(timestamp);
+                            string formattedTime = ts.ToString(@"hh\:mm\:ss\.ff");
+                            result.ExtractedFrames.Add(new VideoFrameInfo(extractedFiles[i], timestamp, formattedTime));
+                        }
+                        logCallback?.Invoke($"[VideoPipeline] Estratti {extractedFiles.Length} fotogrammi con tagging temporale.");
                     }
                 }
             }
@@ -124,6 +132,28 @@ namespace OperaSuprema.Core.Infrastructure
                 return duration;
             }
             return 0;
+        }
+
+        public async Task<string> SliceAudioAsync(string sourceWav, double startSec, double durationSec, CancellationToken ct = default)
+        {
+            string slicePath = Path.Combine(Path.GetDirectoryName(sourceWav) ?? "/tmp", $"slice_{Guid.NewGuid().ToString().Substring(0, 8)}.wav");
+            var psi = new ProcessStartInfo
+            {
+                FileName = "ffmpeg",
+                Arguments = $"-y -ss {startSec.ToString(System.Globalization.CultureInfo.InvariantCulture)} -t {durationSec.ToString(System.Globalization.CultureInfo.InvariantCulture)} -i \"{sourceWav}\" -c copy \"{slicePath}\"",
+                RedirectStandardOutput = false,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var process = Process.Start(psi);
+            if (process != null)
+            {
+                await process.StandardError.ReadToEndAsync(ct);
+                await process.WaitForExitAsync(ct);
+            }
+            return slicePath;
         }
     }
 }

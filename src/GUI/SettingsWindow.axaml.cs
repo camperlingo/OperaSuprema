@@ -103,6 +103,20 @@ namespace OperaSuprema.GUI
                 tokenTextBox.Text = _tempConfig.TelegramToken;
             }
 
+            // --- NUOVO: CARICA TRASCRIZIONE AUDIO / STT ---
+            var sttEndpointTextBox = this.FindControl<TextBox>("SttEndpointTextBox");
+            if (sttEndpointTextBox != null)
+            {
+                sttEndpointTextBox.Text = _tempConfig.SttEndpointUrl;
+            }
+
+            var chkSttAlternateEngine = this.FindControl<CheckBox>("ChkSttAlternateEngine");
+            if (chkSttAlternateEngine != null)
+            {
+                chkSttAlternateEngine.IsChecked = _tempConfig.SttUseAlternateEngine;
+                chkSttAlternateEngine.IsCheckedChanged += (s, e) => _tempConfig.SttUseAlternateEngine = chkSttAlternateEngine.IsChecked == true;
+            }
+
             // Pulisci i pannelli prima di ridisegnare (utile per il ripristino default)
             var panelHacker = this.FindControl<StackPanel>("PanelHacker");
             var panelAccademia = this.FindControl<StackPanel>("PanelAccademia");
@@ -232,6 +246,13 @@ namespace OperaSuprema.GUI
             if (tokenTextBox != null)
             {
                 _tempConfig.TelegramToken = tokenTextBox.Text?.Trim() ?? "";
+            }
+
+            // --- NUOVO: SALVA STT ---
+            var sttEndpointTextBox = this.FindControl<TextBox>("SttEndpointTextBox");
+            if (sttEndpointTextBox != null)
+            {
+                _tempConfig.SttEndpointUrl = sttEndpointTextBox.Text?.Trim() ?? "";
             }
 
             _configManager.SaveConfig(_tempConfig);
