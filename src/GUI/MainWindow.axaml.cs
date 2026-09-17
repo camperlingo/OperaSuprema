@@ -646,7 +646,7 @@ namespace OperaSuprema.GUI
                 if (ledMaster != null) ledMaster.Foreground = data.MasterMentorOnline ? Brushes.SpringGreen : Brushes.Gray;
                 if (ledCoder != null) ledCoder.Foreground = data.CoderOnline ? Brushes.SpringGreen : Brushes.Gray;
                 if (ledVision != null) ledVision.Foreground = data.VisionJakOnline ? Brushes.SpringGreen : Brushes.Gray;
-                if (ledAudio != null) ledAudio.Foreground = data.AudioAnalyzerOnline ? Brushes.SpringGreen : Brushes.Gray;
+                if (ledAudio != null) ledAudio.Foreground = data.AudioJakOnline ? Brushes.SpringGreen : Brushes.Gray;
                 if (ledEmbed != null) ledEmbed.Foreground = data.EmbeddingOnline ? Brushes.SpringGreen : Brushes.Gray;
                 if (ledQdrant != null) ledQdrant.Foreground = data.QdrantOnline ? Brushes.SpringGreen : Brushes.Red;
 
@@ -740,7 +740,7 @@ namespace OperaSuprema.GUI
 
                     if (textLower.Contains("trascrivi") || textLower.Contains("sbobina") || textLower.Contains("testo parlato"))
                     {
-                        await InvokeWhisperTranscriptionAsync(audioPathToProcess, currentTelegramChatId);
+                        await InvokeSpeechToTextAsync(audioPathToProcess, currentTelegramChatId);
                     }
                     else
                     {
@@ -750,7 +750,7 @@ namespace OperaSuprema.GUI
                         else if (userText.Trim() == "3") audioDirective = "Esegui un'analisi musicale avanzata: riconosci strumenti, timbri, note e progressioni armoniche.";
                         else if (userText.Trim() == "4") audioDirective = "Trascrivi l'audio ed esegui una sintesi semantica pura: scomponi i dialoghi e riassumi i punti chiave.";
 
-                        await InvokeAudioAnalyzerAsync(audioDirective, audioPathToProcess);
+                        await InvokeAudioJakAsync(audioDirective, audioPathToProcess);
                     }
                     return;
                 }
@@ -899,9 +899,9 @@ namespace OperaSuprema.GUI
         }
 
         
-        private async Task InvokeAudioAnalyzerAsync(string directive, string audioPath)
+        private async Task InvokeAudioJakAsync(string directive, string audioPath)
         {
-            await SmartModelSwapAsync("MasterMentor_Architetto_Segugio", "AudioAnalyzer", "🎧 Accensione Analizzatore Audio. Caricamento in corso...");
+            await SmartModelSwapAsync("MasterMentor_Architetto_Segugio", "AudioJak", "🎧 Accensione Analizzatore Audio. Caricamento in corso...");
             AppendToChat("[SISTEMA]: Interrogazione modello Qwen2-Audio (Porta 8085)...", Avalonia.Media.Brushes.Cyan);
             
             try
@@ -973,41 +973,98 @@ namespace OperaSuprema.GUI
             }
             finally
             {
-                _containerManager.KillContainer("AudioAnalyzer");
+                _containerManager.KillContainer("AudioJak");
             }
         }
 
-        private async Task InvokeWhisperTranscriptionAsync(string audioPath, long telegramChatId)
+        private async Task InvokeSpeechToTextAsync(string audioPath, long telegramChatId)
         {
-            AppendToChat("[SISTEMA]: ⚙️ Trascrizione in corso...", Avalonia.Media.Brushes.Gray);
+            string engineType = _configManager.CurrentConfig.SttEngineType;
+            AppendToChat($"[SISTEMA]: ⚙️ Trascrizione con {engineType} in corso...", Avalonia.Media.Brushes.Gray);
+            
             try
             {
-                using var form = new MultipartFormDataContent();
-                var fileContent = new ByteArrayContent(await File.ReadAllBytesAsync(audioPath));
-                fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("audio/wav");
-                form.Add(fileContent, "file", "dictation.wav");
-                
-                string endpointUrl = _configManager.CurrentConfig.SttEndpointUrl;
-                if (string.IsNullOrWhiteSpace(endpointUrl)) endpointUrl = "http://localhost:8080/inference";
-                
-                var response = await _httpClient.PostAsync(endpointUrl, form);
-                response.EnsureSuccessStatusCode();
-                
-                var jsonResult = await response.Content.ReadAsStringAsync();
-                using var doc = JsonDocument.Parse(jsonResult);
-                string transcript = doc.RootElement.GetProperty("text").GetString()?.Trim() ?? "";
-
-                if (!string.IsNullOrEmpty(transcript))
+                if (engineType == "Whisper" || engineType == "Custom HTTP")
                 {
-                    AppendToChat($"[WHISPER]:\n{transcript}", Avalonia.Media.Brushes.Yellow);
-                    _chatHistory.Add(new Dictionary<string, string> { { "role", "assistant" }, { "content", transcript } });
-                    _currentSession.Messages.Add(new OperaSuprema.Core.Infrastructure.ChatMessage { Role = "assistant", Content = transcript });
-                    await _sessionManager.SaveSessionAsync(_currentSession, _currentWorkspacePath);
+                    using var form = new MultipartFormDataContent();
+                    var fileContent = new ByteArrayContent(await File.ReadAllBytesAsync(audioPath));
+                    fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("audio/wav");
+                    form.Add(fileContent, "file", "dictation.wav");
+                    
+                    string endpointUrl = _configManager.CurrentConfig.SttEndpointUrl;
+                    if (string.IsNullOrWhiteSpace(endpointUrl)) endpointUrl = "http://localhost:8080/inference";
+                    
+                    var response = await _httpClient.PostAsync(endpointUrl, form);
+                    response.EnsureSuccessStatusCode();
+                    
+                    var jsonResult = await response.Content.ReadAsStringAsync();
+                    using var doc = JsonDocument.Parse(jsonResult);
+                    string transcript = doc.RootElement.GetProperty("text").GetString()?.Trim() ?? "";
+
+                    if (!string.IsNullOrEmpty(transcript))
+                    {
+                        AppendToChat($"[{engineType.ToUpper()}]:\n{transcript}", Avalonia.Media.Brushes.Yellow);
+                        _chatHistory.Add(new Dictionary<string, string> { { "role", "assistant" }, { "content", transcript } });
+                        _currentSession.Messages.Add(new OperaSuprema.Core.Infrastructure.ChatMessage { Role = "assistant", Content = transcript });
+                        await _sessionManager.SaveSessionAsync(_currentSession, _currentWorkspacePath);
+                    }
+                }
+                else if (engineType == "Meta MMS" || engineType == "DeepSpeech")
+                {
+                    string binaryPath = _configManager.CurrentConfig.SttModelOrBinaryPath;
+                    if (string.IsNullOrWhiteSpace(binaryPath))
+                    {
+                        throw new Exception($"Percorso binario locale non impostato per {engineType}. Controlla Hub Impostazioni.");
+                    }
+
+                    var tcs = new TaskCompletionSource<string>();
+                    var process = new System.Diagnostics.Process
+                    {
+                        StartInfo = new System.Diagnostics.ProcessStartInfo
+                        {
+                            FileName = binaryPath,
+                            Arguments = $"\"{audioPath}\"",
+                            RedirectStandardOutput = true,
+                            RedirectStandardError = true,
+                            UseShellExecute = false,
+                            CreateNoWindow = true
+                        },
+                        EnableRaisingEvents = true
+                    };
+
+                    process.Exited += async (s, e) =>
+                    {
+                        string output = await process.StandardOutput.ReadToEndAsync();
+                        string err = await process.StandardError.ReadToEndAsync();
+                        
+                        if (process.ExitCode != 0)
+                        {
+                            tcs.SetException(new Exception(err));
+                        }
+                        else
+                        {
+                            tcs.SetResult(output.Trim());
+                        }
+                        process.Dispose();
+                    };
+
+                    process.Start();
+                    string transcript = await tcs.Task;
+
+                    if (!string.IsNullOrEmpty(transcript))
+                    {
+                        Avalonia.Threading.Dispatcher.UIThread.Post(async () => {
+                            AppendToChat($"[{engineType.ToUpper()}]:\n{transcript}", Avalonia.Media.Brushes.Yellow);
+                            _chatHistory.Add(new Dictionary<string, string> { { "role", "assistant" }, { "content", transcript } });
+                            _currentSession.Messages.Add(new OperaSuprema.Core.Infrastructure.ChatMessage { Role = "assistant", Content = transcript });
+                            await _sessionManager.SaveSessionAsync(_currentSession, _currentWorkspacePath);
+                        });
+                    }
                 }
             }
             catch (Exception ex)
             {
-                AppendToChat($"[ERRORE WHISPER]: {ex.Message}", Avalonia.Media.Brushes.Red);
+                Avalonia.Threading.Dispatcher.UIThread.Post(() => AppendToChat($"[ERRORE STT]: {ex.Message}", Avalonia.Media.Brushes.Red));
             }
         }
 

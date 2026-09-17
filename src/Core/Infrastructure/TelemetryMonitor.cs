@@ -18,7 +18,7 @@ namespace OperaSuprema.Core.Infrastructure
         public bool MasterMentorOnline { get; set; }
         public bool CoderOnline { get; set; }
         public bool VisionJakOnline { get; set; }
-        public bool AudioAnalyzerOnline { get; set; }
+        public bool AudioJakOnline { get; set; }
         public bool EmbeddingOnline { get; set; }
         
         public bool QdrantOnline { get; set; }
@@ -95,7 +95,7 @@ namespace OperaSuprema.Core.Infrastructure
                     data.MasterMentorOnline = await CheckLlamaHealthAsync(8081, ct);
                     data.CoderOnline = await CheckLlamaHealthAsync(8082, ct);
                     data.VisionJakOnline = await CheckLlamaHealthAsync(8084, ct);
-                    data.AudioAnalyzerOnline = await CheckLlamaHealthAsync(8085, ct);
+                    data.AudioJakOnline = await CheckLlamaHealthAsync(8085, ct);
                     data.EmbeddingOnline = await CheckLlamaHealthAsync(8089, ct);
 
                     // 4. Status Qdrant

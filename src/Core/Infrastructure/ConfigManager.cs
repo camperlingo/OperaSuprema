@@ -32,8 +32,9 @@ namespace OperaSuprema.Core.Infrastructure
         public string LlamaServerPath { get; set; } = "";
         
         // --- NUOVO: TRASCRIZIONE AUDIO / STT ---
+        public string SttEngineType { get; set; } = "Whisper"; // Opzioni: "Whisper", "Meta MMS", "DeepSpeech", "Custom HTTP"
         public string SttEndpointUrl { get; set; } = "http://localhost:8080/inference";
-        public bool SttUseAlternateEngine { get; set; } = false;
+        public string SttModelOrBinaryPath { get; set; } = "";
         
         public Dictionary<string, List<ModelDefinition>> Modes { get; set; } = new();
     }
@@ -56,7 +57,9 @@ namespace OperaSuprema.Core.Infrastructure
                 try
                 {
                     string json = File.ReadAllText(_configPath);
-                    return JsonSerializer.Deserialize<AppConfig>(json) ?? GenerateDefaultConfig();
+                    var config = JsonSerializer.Deserialize<AppConfig>(json) ?? GenerateDefaultConfig();
+                    EnsureModelDefaults(config);
+                    return config;
                 }
                 catch
                 {
@@ -79,6 +82,36 @@ namespace OperaSuprema.Core.Infrastructure
             CurrentConfig = config; // Aggiorna a caldo la configurazione attiva
         }
 
+        private void EnsureModelDefaults(AppConfig config)
+        {
+            bool modified = false;
+
+            if (config.Modes.ContainsKey("HACKER"))
+            {
+                var hackerModes = config.Modes["HACKER"];
+                if (!hackerModes.Exists(m => m.Id == "AudioJak"))
+                {
+                    hackerModes.Add(new ModelDefinition { Id = "AudioJak", FileName = "Qwen2-Audio-7B-Instruct-Q8_0.gguf", Port = 8085, ContextSize = 8192, UseFlashAttention = true, KvCacheType = "q8_0" });
+                    modified = true;
+                }
+            }
+
+            if (config.Modes.ContainsKey("ACCADEMIA"))
+            {
+                var accademiaModes = config.Modes["ACCADEMIA"];
+                if (!accademiaModes.Exists(m => m.Id == "AudioJak"))
+                {
+                    accademiaModes.Add(new ModelDefinition { Id = "AudioJak", FileName = "Qwen2-Audio-7B-Instruct-Q8_0.gguf", Port = 8085, ContextSize = 8192, UseFlashAttention = true, KvCacheType = "q8_0" });
+                    modified = true;
+                }
+            }
+
+            if (modified)
+            {
+                SaveConfig(config);
+            }
+        }
+
         // Reso pubblico per permettere al bottone "Ripristina Default" di chiamarlo
         public AppConfig GenerateDefaultConfig()
         {
@@ -91,7 +124,7 @@ namespace OperaSuprema.Core.Infrastructure
                 new ModelDefinition { Id = "EmbeddingEngine", FileName = "nomic-embed-text.gguf", Port = 8089, ContextSize = 8192, UseFlashAttention = false, KvCacheType = "fp16" },
                 new ModelDefinition { Id = "MasterMentor_Architetto_Segugio", FileName = "Nidum-gemma-3-27B-it-Uncensored.Q8_0.gguf", Port = 8081, ContextSize = 32768, UseFlashAttention = true, KvCacheType = "q8_0" },
                 new ModelDefinition { Id = "VisionJak", FileName = "Qwen2-VL-7B-Q8.gguf", Port = 8084, ContextSize = 16384, MmprojFileName = "mmproj-Qwen2-VL-7B.gguf", UseFlashAttention = true, KvCacheType = "q8_0" },
-                new ModelDefinition { Id = "AudioAnalyzer", FileName = "Qwen2-Audio-7B-Instruct-Q8_0.gguf", Port = 8085, ContextSize = 16384, UseFlashAttention = true, KvCacheType = "q8_0" },
+                new ModelDefinition { Id = "AudioJak", FileName = "Qwen2-Audio-7B-Instruct-Q8_0.gguf", Port = 8085, ContextSize = 8192, UseFlashAttention = true, KvCacheType = "q8_0" },
                 new ModelDefinition { Id = "Coder_Principale", FileName = "Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.Q8_0.gguf", Port = 8082, ContextSize = 32768, UseFlashAttention = true, KvCacheType = "q8_0" }
             };
 
@@ -101,7 +134,7 @@ namespace OperaSuprema.Core.Infrastructure
                 new ModelDefinition { Id = "EmbeddingEngine", FileName = "nomic-embed-text.gguf", Port = 8089, ContextSize = 8192, UseFlashAttention = false, KvCacheType = "fp16" },
                 new ModelDefinition { Id = "MasterMentor_Architetto_Segugio", FileName = "Nidum-gemma-3-27B-it-Uncensored.Q8_0.gguf", Port = 8081, ContextSize = 32768, UseFlashAttention = true, KvCacheType = "q8_0" },
                 new ModelDefinition { Id = "VisionJak", FileName = "Qwen2-VL-7B-Q8.gguf", Port = 8084, ContextSize = 16384, MmprojFileName = "mmproj-Qwen2-VL-7B.gguf", UseFlashAttention = true, KvCacheType = "q8_0" },
-                new ModelDefinition { Id = "AudioAnalyzer", FileName = "Qwen2-Audio-7B-Instruct-Q8_0.gguf", Port = 8085, ContextSize = 16384, UseFlashAttention = true, KvCacheType = "q8_0" }
+                new ModelDefinition { Id = "AudioJak", FileName = "Qwen2-Audio-7B-Instruct-Q8_0.gguf", Port = 8085, ContextSize = 8192, UseFlashAttention = true, KvCacheType = "q8_0" }
             };
 
             return config;
