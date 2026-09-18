@@ -35,6 +35,9 @@ namespace OperaSuprema.Core.Infrastructure
 
         private void OnWorkspaceChanged(object sender, FileSystemEventArgs e)
         {
+            // Ignora directory o percorsi inesistenti
+            if (Directory.Exists(e.FullPath) || !File.Exists(e.FullPath)) return;
+
             // Evitiamo le cartelle temporanee, bin, obj, git
             if (e.FullPath.Contains("/bin/") || e.FullPath.Contains("/obj/") || e.FullPath.Contains(".git")) return;
 

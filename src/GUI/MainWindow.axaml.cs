@@ -62,6 +62,7 @@ namespace OperaSuprema.GUI
         private readonly List<Dictionary<string, string>> _chatHistory = new();
         private readonly List<Dictionary<string, object>> _jakHistory = new();
         private readonly VectorMemoryManager _vectorMemory = new VectorMemoryManager();
+        private readonly AtlasKnowledgeManager _atlasManager;
         private readonly SessionDocumentManager _sessionDocManager;
         private readonly List<string> _currentSessionDocs = new();
 	private readonly AutonomousCrawler _crawler;
@@ -83,6 +84,17 @@ namespace OperaSuprema.GUI
             _memoryRouter = new MemoryRouter();
             _sessionDocManager = new SessionDocumentManager(_vectorMemory);
             _sessionManager = new SessionManager(stepChatManager, _ledgerService, _sessionDocManager);
+            _atlasManager = new AtlasKnowledgeManager(_vectorMemory);
+
+            // Hook Atlante della Conoscenza
+            var btnImport = this.FindControl<Button>("BtnImportAtlas");
+            if (btnImport != null) btnImport.Click += OnImportAtlasClicked;
+
+            var btnPrune = this.FindControl<Button>("BtnPruneAtlas");
+            if (btnPrune != null) btnPrune.Click += OnPruneAtlasClicked;
+
+            // Carica lo stato iniziale dell'albero all'avvio
+            _ = RefreshAtlasTreeAsync();
 
             // Hook Faldone UI
             var attachDocBtn = this.FindControl<Button>("AttachDocumentButton");
@@ -669,6 +681,20 @@ namespace OperaSuprema.GUI
             });
         }
 
+        private void OnHelpMenuCommandClicked(object? sender, RoutedEventArgs e)
+        {
+            if (sender is MenuItem menuItem && menuItem.Tag is string commandText)
+            {
+                var inputTextBox = this.FindControl<TextBox>("UserInputTextBox");
+                if (inputTextBox != null)
+                {
+                    inputTextBox.Text = commandText;
+                    inputTextBox.Focus();
+                    inputTextBox.CaretIndex = inputTextBox.Text.Length;
+                }
+            }
+        }
+
         private async void OnSendButtonClicked(object? sender, RoutedEventArgs? e = null)
         {
             var inputTextBox = this.FindControl<TextBox>("UserInputTextBox");
@@ -813,6 +839,29 @@ namespace OperaSuprema.GUI
                 {
                     AppendToChat($"[EMANUELE]: {userText}", Avalonia.Media.Brushes.White);
                     await ShowDecisionLedgerAsync();
+                    return;
+                }
+
+                // --- NUOVO: INTERCETTAZIONE COMANDO BLUEPRINT ---
+                if (userText.Trim().Equals("/blueprint", StringComparison.OrdinalIgnoreCase) || 
+                    userText.Trim().Equals("/salva blueprint", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (string.IsNullOrEmpty(_currentWorkspacePath))
+                    {
+                        AppendToChat("[SISTEMA]: ⚠️ Nessun workspace caricato per salvare il Blueprint.", Avalonia.Media.Brushes.Orange);
+                        return;
+                    }
+                    var lastAiMsg = _chatHistory.LastOrDefault(m => m["role"] == "assistant");
+                    if (lastAiMsg != null && !string.IsNullOrWhiteSpace(lastAiMsg["content"]))
+                    {
+                        string bpPath = Path.Combine(_currentWorkspacePath, ".nexus", "blueprint.md");
+                        await File.WriteAllTextAsync(bpPath, lastAiMsg["content"]);
+                        AppendToChat("[SISTEMA]: 📜 Ultima risposta dell'Architetto cristallizzata con successo in .nexus/blueprint.md.", Avalonia.Media.Brushes.SpringGreen);
+                    }
+                    else
+                    {
+                        AppendToChat("[SISTEMA]: ⚠️ Nessun messaggio dell'Architetto disponibile da salvare come Blueprint.", Avalonia.Media.Brushes.Orange);
+                    }
                     return;
                 }
 
@@ -1173,8 +1222,9 @@ namespace OperaSuprema.GUI
             // 1. Eseguiamo la ricerca usando la searchQuery (che ora contiene la stringa intelligente in caso di crash)
             Task<string> webSearchTask = Task.Run(() => ExecuteBackgroundWebResearchAsync(searchQuery));
             Task<List<string>> qdrantTask = _vectorMemory.SearchContextAsync(searchQuery, topK: 4);
+            Task<List<string>> atlasTask = _atlasManager.SearchAtlasAsync(searchQuery, topK: 3);
 
-            await Task.WhenAll(webSearchTask, qdrantTask); 
+            await Task.WhenAll(webSearchTask, qdrantTask, atlasTask); 
 
             // --- RADAR DI RETE E TOLLERANZA GUASTI ---
             string webContext = "";
@@ -1200,6 +1250,14 @@ namespace OperaSuprema.GUI
             {
                 Dispatcher.UIThread.Post(() => AppendToChat($"[ACCADEMIA]: 📚 Estratti {libraryResults.Count} frammenti dal database locale.", Avalonia.Media.Brushes.LightGreen));
                 contextData += "=== DATI AZIENDALI (QDRANT) ===\n" + string.Join("\n\n", libraryResults) + "\n===============================\n\n";
+            }
+            
+            if (atlasTask.Result.Count > 0)
+            {
+                Dispatcher.UIThread.Post(() => AppendToChat($"[ATLANTE]: 📚 Estratti {atlasTask.Result.Count} frammenti specialistici dall'Atlante.", Avalonia.Media.Brushes.LightSkyBlue));
+                contextData += "=== CONOSCENZA SPECIALISTICA (ATLANTE GLOBALE) ===\n" + 
+                               string.Join("\n\n", atlasTask.Result) + 
+                               "\n===================================================\n\n";
             }
             
             if (!string.IsNullOrEmpty(webContext) && !webContext.StartsWith("[INFO]"))
@@ -1594,7 +1652,8 @@ namespace OperaSuprema.GUI
             catch { }
 
             // 1. REGOLE FERREE DEL CODER (System Message)
-            string systemInstruction = $@"Sei il Coder (Ingegnere Riparatore e Sviluppatore) di Opera Suprema. Scrivi SOLO il codice implementativo.
+            StringBuilder systemPromptBuilder = new StringBuilder();
+            systemPromptBuilder.AppendLine($@"Sei il Coder (Ingegnere Riparatore e Sviluppatore) di Opera Suprema. Scrivi SOLO il codice implementativo.
 REGOLA 1: Devi SEMPRE dichiarare il nome del file prima del blocco di codice.
 REGOLA 2: Genera SEMPRE il file .csproj imponendo TASSATIVAMENTE <TargetFramework>net10.0</TargetFramework>. Includi ESCLUSIVAMENTE questi 5 pacchetti Avalonia 11.1.0: 'Avalonia', 'Avalonia.Desktop', 'Avalonia.Themes.Fluent', 'Avalonia.Diagnostics', 'Avalonia.ReactiveUI'. NON aggiungere altri pacchetti.
 REGOLA 3: Per i progetti Avalonia, DEVI SEMPRE generare per intero i file di avvio obbligatori ('Program.cs', 'App.axaml' e 'App.axaml.cs').
@@ -1603,8 +1662,7 @@ REGOLA SUPREMA DI FORMATTAZIONE: Per OGNI SINGOLO FILE, DEVI usare questo esatto
 [FILE: Cartella/NomeDelFile.estensione]
 ```csharp
 // codice
-```{coderLTM}";
-            messagesPayload.Add(new { role = "system", content = systemInstruction });
+```{coderLTM}");
 
             // 2. RECUPERO DEL BLUEPRINT (System Context)
             if (!string.IsNullOrEmpty(_currentWorkspacePath))
@@ -1613,7 +1671,7 @@ REGOLA SUPREMA DI FORMATTAZIONE: Per OGNI SINGOLO FILE, DEVI usare questo esatto
                 if (File.Exists(blueprintPath))
                 {
                     string bpContent = await File.ReadAllTextAsync(blueprintPath);
-                    messagesPayload.Add(new { role = "system", content = $"=== BLUEPRINT DEL PROGETTO ===\n{bpContent}\n=============================" });
+                    systemPromptBuilder.AppendLine($"=== BLUEPRINT DEL PROGETTO ===\n{bpContent}\n=============================");
                 }
             }
 
@@ -1646,9 +1704,11 @@ REGOLA SUPREMA DI FORMATTAZIONE: Per OGNI SINGOLO FILE, DEVI usare questo esatto
                         }
                         catch { }
                     }
-                    messagesPayload.Add(new { role = "system", content = $"=== INFORMAZIONI DI CONTESTO (STATO DEL FILE SYSTEM) ===\nIL CODER HA ACCESSO IN LETTURA AI SEGUENTI FILE ESISTENTI NEL PROGETTO:\n{injectedFilesContext}" });
+                    systemPromptBuilder.AppendLine($"=== INFORMAZIONI DI CONTESTO (STATO DEL FILE SYSTEM) ===\nIL CODER HA ACCESSO IN LETTURA AI SEGUENTI FILE ESISTENTI NEL PROGETTO:\n{injectedFilesContext}");
                 }
             }
+
+            messagesPayload.Add(new { role = "system", content = systemPromptBuilder.ToString() });
 
             // 4. ORDINE ESECUTIVO FINALE (User Message)
             string finalCommand = $"L'Architetto ti ha ordinato di procedere con l'implementazione basandoti sul Blueprint, sui file sorgente attuali e sul registro degli errori passati.\nEcco la sua direttiva esecutiva finale:\n\n{plannerAnalysis}\n\nAgisci come Coder. Applica ESATTAMENTE la soluzione. Riscrivi per intero i file necessari. Scrivi SOLO il codice implementativo, senza spiegazioni testuali.";
@@ -1782,25 +1842,10 @@ REGOLA SUPREMA DI FORMATTAZIONE: Per OGNI SINGOLO FILE, DEVI usare questo esatto
             // --- INIZIO PATCH: FILTRO IMMUNITÀ BOILERPLATE (AMPUTAZIONE FISICA AVANZATA) ---
             string safeCodeToReview = sourceCode;
             string[] filesToProtect = { ".csproj", "Program.cs", "App.axaml", "App.axaml.cs" };
-
             foreach (var file in filesToProtect)
             {
-                // Usiamo una Regex per intercettare il tag a prescindere dal nome della cartella inventata dal Coder
-                string pattern = $@"\[FILE:[^\]]*?{System.Text.RegularExpressions.Regex.Escape(file)}\]";
-                var match = System.Text.RegularExpressions.Regex.Match(safeCodeToReview, pattern);
-
-                while (match.Success)
-                {
-                    int startIndex = match.Index;
-                    int nextFileIndex = safeCodeToReview.IndexOf("[FILE:", startIndex + match.Length);
-
-                    if (nextFileIndex == -1)
-                        safeCodeToReview = safeCodeToReview.Substring(0, startIndex);
-                    else
-                        safeCodeToReview = safeCodeToReview.Substring(0, startIndex) + safeCodeToReview.Substring(nextFileIndex);
-                    
-                    match = System.Text.RegularExpressions.Regex.Match(safeCodeToReview, pattern);
-                }
+                string pattern = $@"\[FILE:\s*[^\]]*?{Regex.Escape(file)}\].*?```(?:csharp|cs|xml)?.*?```";
+                safeCodeToReview = Regex.Replace(safeCodeToReview, pattern, "", RegexOptions.Singleline | RegexOptions.IgnoreCase);
             }
             // --- FINE PATCH ---
 
@@ -2077,11 +2122,11 @@ Metti i comandi in un blocco codice ```bash. Non aggiungere altre spiegazioni.";
                 parsedFiles.Add((rawPath, finalPath, codeContent));
 
                 // Se l'IA sta generando un .csproj, significa che è una rigenerazione totale
-                // if (finalPath.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
-                // {
-                    // projectRootToPurge = Path.GetDirectoryName(finalPath);
-                    // isFullProjectGeneration = true;
-                // }
+                if (finalPath.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
+                {
+                    projectRootToPurge = Path.GetDirectoryName(finalPath);
+                    isFullProjectGeneration = true;
+                }
             }
 
             // Fallback root
@@ -2160,7 +2205,21 @@ Metti i comandi in un blocco codice ```bash. Non aggiungere altre spiegazioni.";
                         Dispatcher.UIThread.Post(() => AppendToChat($"[SISTEMA]: 📁 Generata directory: {directoryPath}", Brushes.Gray));
                     }
 
-                    File.WriteAllText(fileToProcess.FinalPath, fileToProcess.Code, Encoding.UTF8);
+                    int retries = 5;
+                    while (retries > 0)
+                    {
+                        try
+                        {
+                            File.WriteAllText(fileToProcess.FinalPath, fileToProcess.Code, Encoding.UTF8);
+                            break;
+                        }
+                        catch (IOException)
+                        {
+                            retries--;
+                            if (retries == 0) throw;
+                            System.Threading.Thread.Sleep(200);
+                        }
+                    }
                     
                     string fileName = Path.GetFileName(fileToProcess.FinalPath);
                     Dispatcher.UIThread.Post(() => AppendToChat($"[⚙️ AUTONOMO]: 💾 File inciso con successo: {fileToProcess.FinalPath}", Brushes.SpringGreen));
@@ -3539,6 +3598,10 @@ Attendi sempre la decisione dell'utente prima di procedere.
                         if (parenthesisIndex > 0)
                         {
                             string potentialFile = line.Substring(0, parenthesisIndex).Trim();
+                            if (!Path.IsPathRooted(potentialFile) && !string.IsNullOrEmpty(_currentWorkspacePath))
+                            {
+                                potentialFile = Path.Combine(_currentWorkspacePath, potentialFile);
+                            }
                             if (File.Exists(potentialFile))
                             {
                                 filesToRead.Add(potentialFile);
@@ -3661,6 +3724,7 @@ Questo è necessario per innescare la catena di automazione.";
                 };
 
                 process.Start();
+                AppDomain.CurrentDomain.ProcessExit += (s, e) => { try { process.Kill(true); } catch { } };
                 process.BeginErrorReadLine(); // Lettura asincrona per evitare blocchi
                 
                 await process.WaitForExitAsync();
@@ -4329,6 +4393,100 @@ REGOLA SUPREMA DI FORMATTAZIONE: Per OGNI file, usa TASSATIVAMENTE questo format
             }
 
             AppendToChat("===============================================================", Avalonia.Media.Brushes.Gold);
+        }
+
+        private async void OnImportAtlasClicked(object? sender, RoutedEventArgs e)
+        {
+            var topLevel = TopLevel.GetTopLevel(this);
+            if (topLevel == null) return;
+
+            var files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+            {
+                Title = "Importa Corpus Globale nell'Atlante",
+                AllowMultiple = false,
+                FileTypeFilter = new[]
+                {
+                    new FilePickerFileType("Documenti Supportati") { Patterns = new[] { "*.pdf", "*.txt", "*.md" } }
+                }
+            });
+
+            if (files.Count > 0)
+            {
+                string filePath = files[0].Path.LocalPath;
+                AppendToChat($"[ATLAS]: Inizio importazione di {System.IO.Path.GetFileName(filePath)}...", Avalonia.Media.Brushes.LightSkyBlue);
+
+                var progress = new Progress<double>(percent =>
+                {
+                    Dispatcher.UIThread.Post(() =>
+                    {
+                        var batchBar = this.FindControl<ProgressBar>("BatchProgressBar");
+                        var batchText = this.FindControl<TextBlock>("BatchProgressText");
+                        var batchPanel = this.FindControl<StackPanel>("BatchProgressPanel");
+                        if (batchPanel != null) batchPanel.IsVisible = true;
+                        if (batchBar != null) batchBar.Value = percent;
+                        if (batchText != null) batchText.Text = $"Vettorializzazione Atlante: {percent:F0}%";
+                    });
+                });
+
+                try
+                {
+                    string disc = await _atlasManager.ImportCorpusAsync(filePath, 
+                        msg => Dispatcher.UIThread.Post(() => AppendToChat(msg, Avalonia.Media.Brushes.LightGreen)), 
+                        progress);
+
+                    Dispatcher.UIThread.Post(() =>
+                    {
+                        var batchPanel = this.FindControl<StackPanel>("BatchProgressPanel");
+                        if (batchPanel != null) batchPanel.IsVisible = false;
+                        AppendToChat($"[ATLAS]: ✅ Corpus '{System.IO.Path.GetFileName(filePath)}' indicizzato sotto la disciplina: {disc}", Avalonia.Media.Brushes.SpringGreen);
+                    });
+
+                    await RefreshAtlasTreeAsync();
+                }
+                catch (Exception ex)
+                {
+                    Dispatcher.UIThread.Post(() => AppendToChat($"[ATLAS ERRORE]: {ex.Message}", Avalonia.Media.Brushes.Red));
+                }
+            }
+        }
+
+        private async Task RefreshAtlasTreeAsync()
+        {
+            try
+            {
+                var stats = await _atlasManager.GetAtlasStatsAsync();
+                Dispatcher.UIThread.Post(() =>
+                {
+                    var tree = this.FindControl<TreeView>("AtlasTreeView");
+                    if (tree != null)
+                    {
+                        var items = new List<TreeViewItem>();
+                        foreach (var kvp in stats)
+                        {
+                            var item = new TreeViewItem { Header = $"📚 {kvp.Key} ({kvp.Value} chunk)" };
+                            items.Add(item);
+                        }
+                        tree.ItemsSource = items;
+                    }
+                });
+            }
+            catch { }
+        }
+
+        private async void OnPruneAtlasClicked(object? sender, RoutedEventArgs e)
+        {
+            var tree = this.FindControl<TreeView>("AtlasTreeView");
+            if (tree?.SelectedItem is TreeViewItem selectedItem && selectedItem.Header is string header)
+            {
+                string disc = header.Split('(')[0].Replace("📚", "").Trim();
+                await _atlasManager.PruneDisciplineAsync(disc);
+                AppendToChat($"[ATLAS]: 🗑️ Disciplina '{disc}' eliminata dall'Atlante.", Avalonia.Media.Brushes.Orange);
+                await RefreshAtlasTreeAsync();
+            }
+            else
+            {
+                AppendToChat("[ATLAS]: ⚠️ Seleziona prima una disciplina dall'albero sottostante per eliminarla.", Avalonia.Media.Brushes.Orange);
+            }
         }
     }
 }

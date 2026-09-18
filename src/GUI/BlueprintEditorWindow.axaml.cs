@@ -28,8 +28,8 @@ namespace OperaSuprema.GUI
                 try
                 {
                     string content = await File.ReadAllTextAsync(_blueprintPath);
-                    var txtObj = this.FindControl<TextBox>("TxtObjective");
-                    if (txtObj != null) txtObj.Text = content;
+                    var txtBlueprint = this.FindControl<TextBox>("TxtBlueprintContent");
+                    if (txtBlueprint != null) txtBlueprint.Text = content;
                 }
                 catch { }
             }
@@ -39,25 +39,12 @@ namespace OperaSuprema.GUI
 
         private async void OnSaveClicked(object? sender, RoutedEventArgs e)
         {
-            var txtObj = this.FindControl<TextBox>("TxtObjective")?.Text ?? "";
-            var txtTech = this.FindControl<TextBox>("TxtTechSpecs")?.Text ?? "";
-            var txtRules = this.FindControl<TextBox>("TxtRules")?.Text ?? "";
-
-            string formattedMarkdown = $@"# 📜 Blueprint del Progetto
-
-**Obiettivo Principale:**
-{txtObj}
-
-**Requisiti Tecnici e Architettura:**
-{txtTech}
-
-**Regole di Stile per il Coder:**
-{txtRules}
-";
+            var txtBlueprint = this.FindControl<TextBox>("TxtBlueprintContent");
+            string contentToSave = txtBlueprint?.Text ?? "";
 
             try
             {
-                await File.WriteAllTextAsync(_blueprintPath, formattedMarkdown);
+                await File.WriteAllTextAsync(_blueprintPath, contentToSave);
             }
             catch { }
 

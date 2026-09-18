@@ -298,6 +298,48 @@ namespace OperaSuprema.Core.Infrastructure
             }
         }
 
+        public async Task<List<string>> SearchAtlasAsync(string query, int topK = 4)
+        {
+            var results = new List<string>();
+            await EnsureCollectionExistsAsync();
+            try
+            {
+                float[] queryVector = await _vectorManager.GetEmbeddingAsync(query, true);
+                var payload = new
+                {
+                    vector = queryVector,
+                    limit = topK,
+                    with_payload = true
+                };
+
+                var requestContent = System.Net.Http.Json.JsonContent.Create(payload);
+                var response = await _httpClient.PostAsync($"{QdrantBaseUrl}/collections/{CollectionName}/points/search", requestContent);
+                if (response.IsSuccessStatusCode)
+                {
+                    string jsonResponse = await response.Content.ReadAsStringAsync();
+                    using var doc = JsonDocument.Parse(jsonResponse);
+                    if (doc.RootElement.TryGetProperty("result", out var resultList))
+                    {
+                        foreach (var item in resultList.EnumerateArray())
+                        {
+                            if (item.TryGetProperty("payload", out var pld) &&
+                                pld.TryGetProperty("text", out var textEl) &&
+                                pld.TryGetProperty("discipline", out var discEl) &&
+                                pld.TryGetProperty("filename", out var fileEl))
+                            {
+                                results.Add($"[ATLANTE - {discEl.GetString()} | {fileEl.GetString()}]: {textEl.GetString()}");
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ATLAS SEARCH ERROR]: {ex.Message}");
+            }
+            return results;
+        }
+
         private List<string> SplitIntoChunks(string text, int maxChunkSize, int overlap)
         {
             var chunks = new List<string>();
