@@ -15,6 +15,18 @@
                 <Separator Background="#3F3F46" Height="1"/>
                 <MenuItem Name="MenuExit" Header="❌ Esci da Opera Suprema" Foreground="Tomato"/>
             </MenuItem>
+            <MenuItem Header="_Comandi di Sistema">
+                <MenuItem Header="📘 /addestra [argomento]" Click="OnHelpMenuCommandClicked" Tag="/addestra " />
+                <TextBlock Text="   Avvia l'addestramento autonomo (Accademia/Crawler)" FontSize="11" Foreground="Gray" Padding="15,2,5,5"/>
+                <Separator Background="#3F3F46" Height="1"/>
+                
+                <MenuItem Header="📜 /blueprint (o /salva blueprint)" Click="OnHelpMenuCommandClicked" Tag="/blueprint" />
+                <TextBlock Text="   Cristallizza l'ultima risposta dell'Architetto nel Blueprint" FontSize="11" Foreground="Gray" Padding="15,2,5,5"/>
+                <Separator Background="#3F3F46" Height="1"/>
+                
+                <MenuItem Header="⚖️ /decisioni (o /ledger)" Click="OnHelpMenuCommandClicked" Tag="/decisioni" />
+                <TextBlock Text="   Mostra il registro delle decisioni attive (Decision Ledger)" FontSize="11" Foreground="Gray" Padding="15,2,5,5"/>
+            </MenuItem>
         </Menu>
 
         <SplitView Grid.Row="1" x:Name="ChatSplitView" DisplayMode="Inline" OpenPaneLength="280" IsPaneOpen="False" PaneBackground="#1E1E1E">

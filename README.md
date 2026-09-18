@@ -1,63 +1,54 @@
-# 🎭 Opera Suprema - Local Enterprise AI Agentic IDE
+# 🌌 Opera Suprema - Local Enterprise AI Agentic IDE
 
-![Version](https://img.shields.io/badge/version-v9.0-blue.svg)
-![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)
-![Tech Stack](https://img.shields.io/badge/Tech-C%23%20%7C%20Avalonia%20UI-purple.svg)
-![Architecture](https://img.shields.io/badge/Architecture-Multi--Agent%20%7C%20RAG-success.svg)
+[![Version](https://img.shields.io/badge/version-v2.0--certified-blue.svg)](https://github.com/camperlingo/OperaSuprema)
+[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20macOS-lightgrey.svg)](https://github.com/camperlingo/OperaSuprema)
+[![Tech](https://img.shields.io/badge/tech-.NET%2010%20%7C%20Avalonia%20UI%2011-purple.svg)](https://github.com/camperlingo/OperaSuprema)
+[![Architecture](https://img.shields.io/badge/architecture-Dual--LLM%20%7C%20MoE%20%7C%20Agentic-orange.svg)](https://github.com/camperlingo/OperaSuprema)
 
-🇬🇧 **[English](#english)** | 🇮🇹 **[Italiano](#italiano)**
+[🇬🇧 English](#-english) | [🇮🇹 Italiano](#-italiano)
 
 ---
 
-<a name="english"></a>
 ## 🇬🇧 English
 
-**Opera Suprema** is an advanced, cross-platform Local Enterprise AI IDE designed to orchestrate multi-agent neural architectures completely offline. Built with C# and Avalonia UI, it acts as a centralized brain to manage local Mixture of Experts (MoE) workflows without relying on cloud services.
+Opera Suprema is a cross-platform, local Enterprise AI IDE engineered to orchestrate multi-agent neural architectures completely offline. Built with C#, .NET 10, and Avalonia UI, it functions as a centralized autonomous engineering workshop without relying on proprietary cloud APIs.
 
 ### 🌌 The Paradigm of the Fall (Our Manifesto)
-In Opera Suprema, a crash is not a failure; it is fuel. This IDE introduces a self-evolving ecosystem where the AI learns from its mistakes. If the compiler crashes, the system analyzes the error, searches the web for modern documentation, fixes the code, and permanently crystallizes the solution in its Vector Hippocampus (Qdrant). *Do not fear the red terminal: pushing the system to its limits is how it achieves perfection.*
+In Opera Suprema, a build error is not a failure; it is fuel. This IDE introduces a self-evolving engineering loop: if code fails during compilation or runtime, the system captures stderr/stdout, enriches context with past failure memory, queries web documentation via local scrapers, fixes the code, and permanently crystallizes the solution into vector storage.
 
-### 🚀 Core Features
-*   **Hub & Spoke Agentic Workflow:** An Architect agent designs the logic, a Coder agent blindly executes it, and a Supreme Judge evaluates the output. A flawless, continuous self-healing loop.
-*   **Vector Hippocampus (RAG):** Uses deterministic MD5 hashing to store successes and failures in a local vector database. The AI remembers past bugs and avoids repeating them.
-*   **Autonomous Web Hound:** Local models are no longer limited by their training cutoff. The IDE autonomously scrapes the web to learn new framework syntaxes (e.g., Avalonia 11.1 updates) and applies them in real-time.
-*   **Smart VRAM Optimization:** Features an intelligent "Hot-Swapping" system with granular memory offload sliders (0-100%). It dynamically monitors system RAM (supporting high-capacity CAMM2/SO-DIMM setups) and VRAM to prevent Out-Of-Memory errors.
-*   **Native `llama.cpp` Integration:** Seamlessly hooks into the `llama-server` executable, automatically traversing directories to find the correct binaries for your hardware (CUDA/ROCm/Metal/AVX2).
-*   **Hardware-Aware:** Designed to fully saturate high-bandwidth connections like OCuLink (x8 PCIe 5.0) for rapid context switching between heavy LLMs.
-*   **Remote Management:** Built-in Telegram Bot integration for secure remote monitoring and directive execution.
-
-### 🛠️ Getting Started
-1. Clone the repository.
-2. Ensure you have the `.NET SDK` installed.
-3. Download the correct `llama-server` binary for your hardware from the official `llama.cpp` repository.
-4. Run `dotnet run` in the project root.
-5. On first launch, the IDE will prompt you to link your `llama-server` executable and configure your GGUF models.
+### ⚡ Key Capabilities
+* **Dual-LLM Engineering Orchestration:** High-level architectural planning via Gemma 3 27B (Master Mentor) paired with dedicated 30B code synthesis (Qwen Coder) on isolated ports.
+* **Autonomous IDE & Self-Healing Pipeline:** Automated generation of .NET/Avalonia solutions from scratch, filesystem projection with anti-collision retry patterns, real-time dotnet build diagnosis, and zero-error recovery loops.
+* **Knowledge Atlas (Atlante della Conoscenza):** Multimodal zero-human corpus ingestion, automatic discipline classification, semantic Qdrant indexing, and on-demand discipline pruning.
+* **Decision Ledger & Relational Memory:** SQLite with WAL mode and FTS5 full-text search enforcing active architectural rules across sessions with deterministic prefix caching.
+* **Linux Kernel Supervision:** Full process tree management (process.Kill(true)) preventing orphan processes, zombie MSBuild daemons, and port locks.
+* **Zero-LOH Streaming:** Low-level HTTP payload streaming avoiding Large Object Heap fragmentation during multi-megabyte code and multimodal tensor transfers.
+* **Deterministic System Commands:** Integrated quick access for /blueprint, /addestra, and /decisioni.
 
 ---
 
-<a name="italiano"></a>
 ## 🇮🇹 Italiano
 
-**Opera Suprema** è un IDE Enterprise avanzato e multipiattaforma per l'orchestrazione locale di architetture neurali multi-agente. Scritto in C# e basato su Avalonia UI, funge da "cervello" centralizzato per gestire flussi di lavoro Mixture of Experts (MoE) completamente in locale, senza appoggiarsi a servizi cloud.
+Opera Suprema è un IDE Enterprise avanzato e multipiattaforma per l'orchestrazione locale di architetture neurali multi-agente. Sviluppato in C#, .NET 10 e Avalonia UI, agisce come un laboratorio autonomo di ingegneria del software completamente offline.
 
 ### 🌌 Il Paradigma della Caduta (Il Nostro Manifesto)
-In Opera Suprema, un errore del compilatore non è un fallimento, è carburante. Questo IDE introduce un ecosistema auto-evolutivo in cui l'IA impara dai propri errori. Se il codice va in crash, il sistema analizza il log, interroga il web alla ricerca di documentazione aggiornata, applica la correzione e cristallizza permanentemente la soluzione nel suo Ippocampo Vettoriale (Qdrant). *Non temete gli errori a terminale: spingere il sistema al limite è l'unico modo per renderlo infallibile.*
+In Opera Suprema, un errore del compilatore non è una sconfitta, ma carburante. Questo IDE introduce un ecosistema auto-evolutivo: quando il codice fallisce, il sistema analizza il log degli errori, consulta la memoria dei fallimenti passati, estrae documentazione aggiornata via web scraping, corregge la struttura e cristallizza permanentemente la soluzione nel database vettoriale.
 
-### 🚀 Funzionalità Principali
-*   **Flusso Agentico "Hub & Spoke":** Un agente Architetto progetta la logica, un agente Coder la esegue e un Giudice Supremo valuta il codice. Un ciclo di auto-guarigione perfetto e continuo.
-*   **Ippocampo Vettoriale (RAG):** Utilizza un sistema di ID deterministici (MD5) per memorizzare fallimenti e successi in un database vettoriale locale. L'IA ricorda i vecchi bug e non li ripete mai più.
-*   **Segugio Web Autonomo:** I modelli locali non sono più limitati alla data del loro addestramento. L'IDE raschia autonomamente il web per imparare nuove sintassi (es. aggiornamenti di Avalonia 11.1) e applicarle in tempo reale.
-*   **Ottimizzazione VRAM Intelligente:** Sistema di "Hot-Swapping" dinamico con slider percentuali (0-100%) per il controllo granulare dell'offload. Il radar integrato monitora la RAM reale di sistema (ideale per configurazioni ad altissima capacità CAMM2 o SO-DIMM) per evitare blocchi e saturazioni.
-*   **Integrazione Nativa `llama.cpp`:** Si aggancia in modo trasparente all'eseguibile `llama-server`, ricercando autonomamente i binari corretti per l'hardware in uso (CUDA/ROCm/Metal/AVX2).
-*   **Hardware-Aware:** Progettato per sfruttare al massimo la banda passante di connessioni come OCuLink (x8 PCIe 5.0), garantendo un rapido context switching tra LLM pesanti.
-*   **Gestione da Remoto:** Integrazione Telegram Bot per il monitoraggio sicuro e l'invio di direttive anche a distanza.
-
-### 🛠️ Installazione
-1. Clona la repository.
-2. Assicurati di avere installato il `.NET SDK`.
-3. Scarica l'eseguibile `llama-server` corretto per il tuo hardware dalla repository ufficiale di `llama.cpp`.
-4. Esegui `dotnet run` nella cartella principale.
-5. Al primo avvio, l'interfaccia ti guiderà nel collegamento dell'eseguibile e nella configurazione dei tuoi modelli GGUF.
+### ⚡ Funzionalità Principali
+* **Orchestrazione Dual-LLM:** Separazione netta tra pianificazione strategica (Gemma 3 27B - Master Mentor) e implementazione del codice (Qwen 30B - Coder Principale).
+* **Pipeline IDE Autonoma e Self-Healing:** Generazione automatica di progetti Avalonia/.NET, scrittura sicura su disco con Retry Pattern anti-collisione, ciclo di auto-compilazione con dotnet build e correzione zero-shot.
+* **Atlante della Conoscenza Specialistica:** Ingestione autonoma di documenti (PDF/testo), classificazione semantica della disciplina senza intervento umano e indicizzazione vettoriale su Qdrant.
+* **Decision Ledger su SQLite WAL:** Registro relazionale con FTS5 per imporre decisioni architetturali vincolanti e preservare la coerenza tecnica nel tempo.
+* **Supervisione Processi Kernel Linux:** Tracciamento rigoroso del ciclo di vita dei processi generati da dotnet run, azzerando i processi orfani e i file lock.
+* **Gestione Memoria Zero-LOH:** Streaming JSON a basso livello per evitare la frammentazione della Large Object Heap durante il passaggio di file sorgente e tensori multimediali.
+* **Comandi Rapidi di Sistema:** Menu rapido e terminale interattivo per /blueprint, /addestra e /decisioni.
 
 ---
-*Opera Suprema - Your logic, your hardware, your rules.*
+
+## 🛠️ Requisiti di Sistema & Avvio
+
+1. .NET 10 SDK installato.
+2. Qdrant Vector Database attivo su localhost:6333.
+3. llama.cpp / llama-server compilato per il proprio acceleratore.
+4. Esegui il boot:
+   dotnet run
